@@ -18,6 +18,9 @@ conda activate csv-curve-editor
 # 启动 GUI
 PYTHONPATH=src python -m csv_curve_editor.main
 
+# macOS 双击一键启动脚本（会进入项目目录、激活 csv-curve-editor、设置 PYTHONPATH）
+./启动\ CSV\ Curve\ Editor.command
+
 # 运行全部测试
 PYTHONPATH=src pytest
 
@@ -31,7 +34,7 @@ PYTHONPATH=src pytest tests/test_calculations.py::test_speed_engine_rpm_roundtri
 PYTHONPATH=src python -m compileall src
 ```
 
-当前依赖在 `environment.yml` 中维护，主要包括 `PySide6`、`pyqtgraph`、`pytest`；没有配置专门的 lint 或 formatter 命令。
+当前依赖在 `environment.yml` 中维护，主要包括 `PySide6`、`pyqtgraph`、`pytest`；没有配置专门的 lint 或 formatter 命令。`启动 CSV Curve Editor.command` 是项目根目录的 macOS 双击启动脚本；如果 `conda` 不在 PATH 中，会尝试 source `~/miniconda3/etc/profile.d/conda.sh` 或 `~/anaconda3/etc/profile.d/conda.sh`。
 
 ## 项目定位
 
