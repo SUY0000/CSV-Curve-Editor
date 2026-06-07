@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .binding import sync_after_parameter_edit, sync_speed_rpm
 from .csv_io import export_csv, import_csv
 from .curve_editor import CurveEditor
 from .models import CurveParameter, Keyframe, ProjectSettings, SUPPORTED_FPS
@@ -36,8 +37,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("CSV Curve Editor")
         self.project = ProjectSettings.create_default()
+        sync_speed_rpm(self.project, "speed_kmh")
         self.selected_keyframe_index = -1
         self.updating_fields = False
+        self.updating_parameter_list = False
 
         self._build_toolbar()
         self._build_central_widget()
@@ -64,9 +67,9 @@ class MainWindow(QMainWindow):
         self.duration_spin.setValue(self.project.duration_seconds)
         self.duration_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.PlusMinus)
 
-        self.auto_rpm_check = QCheckBox("RPM 自动绑定")
+        self.speed_rpm_link_check = QCheckBox("时速/转速绑定")
         self.auto_g_check = QCheckBox("纵向 G 自动计算")
-        self.auto_rpm_check.setChecked(self.project.auto_rpm)
+        self.speed_rpm_link_check.setChecked(self.project.speed_rpm_link_enabled)
         self.auto_g_check.setChecked(self.project.auto_longitudinal_g)
 
         toolbar.addWidget(new_button)
@@ -79,7 +82,7 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.duration_spin)
         toolbar.addSeparator()
         toolbar.addWidget(vehicle_button)
-        toolbar.addWidget(self.auto_rpm_check)
+        toolbar.addWidget(self.speed_rpm_link_check)
         toolbar.addWidget(self.auto_g_check)
 
         new_button.clicked.connect(self.new_project)
@@ -88,7 +91,7 @@ class MainWindow(QMainWindow):
         vehicle_button.clicked.connect(self.edit_vehicle_settings)
         self.fps_combo.currentIndexChanged.connect(self.update_fps)
         self.duration_spin.valueChanged.connect(self.update_duration)
-        self.auto_rpm_check.toggled.connect(self.update_auto_flags)
+        self.speed_rpm_link_check.toggled.connect(self.update_auto_flags)
         self.auto_g_check.toggled.connect(self.update_auto_flags)
 
     def _build_central_widget(self) -> None:
@@ -98,7 +101,7 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
-        left_layout.addWidget(QLabel("参数"))
+        left_layout.addWidget(QLabel("参数（勾选为叠加显示，选中为编辑）"))
         self.parameter_list = QListWidget()
         self.add_parameter_button = QPushButton("新增自定义参数")
         left_layout.addWidget(self.parameter_list)
@@ -118,12 +121,13 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
 
         self.parameter_list.currentRowChanged.connect(self.select_parameter)
+        self.parameter_list.itemChanged.connect(self.update_overlay_selection)
         self.add_parameter_button.clicked.connect(self.add_custom_parameter)
         self.curve_editor.curve_changed.connect(self.on_curve_changed)
         self.curve_editor.keyframe_selected.connect(self.load_keyframe_fields)
 
     def _build_keyframe_group(self) -> QGroupBox:
-        group = QGroupBox("关键帧")
+        group = QGroupBox("关键帧 / 显示范围")
         layout = QHBoxLayout(group)
 
         self.frame_spin = QSpinBox()
@@ -137,18 +141,35 @@ class MainWindow(QMainWindow):
         self.smooth_spin.setSingleStep(0.05)
         self.delete_keyframe_button = QPushButton("删除关键帧")
 
-        form = QFormLayout()
-        form.addRow("Frame", self.frame_spin)
-        form.addRow("Value", self.value_spin)
-        form.addRow("Smooth", self.smooth_spin)
-        layout.addLayout(form)
+        keyframe_form = QFormLayout()
+        keyframe_form.addRow("Frame", self.frame_spin)
+        keyframe_form.addRow("Value", self.value_spin)
+        keyframe_form.addRow("Smooth", self.smooth_spin)
+        layout.addLayout(keyframe_form)
         layout.addWidget(self.delete_keyframe_button)
+
+        self.y_auto_check = QCheckBox("Y Auto")
+        self.y_min_spin = QDoubleSpinBox()
+        self.y_min_spin.setRange(-1_000_000, 1_000_000)
+        self.y_min_spin.setDecimals(3)
+        self.y_max_spin = QDoubleSpinBox()
+        self.y_max_spin.setRange(-1_000_000, 1_000_000)
+        self.y_max_spin.setDecimals(3)
+
+        range_form = QFormLayout()
+        range_form.addRow("", self.y_auto_check)
+        range_form.addRow("Y Min", self.y_min_spin)
+        range_form.addRow("Y Max", self.y_max_spin)
+        layout.addLayout(range_form)
         layout.addStretch(1)
 
         self.frame_spin.valueChanged.connect(self.update_selected_keyframe)
         self.value_spin.valueChanged.connect(self.update_selected_keyframe)
         self.smooth_spin.valueChanged.connect(self.update_selected_keyframe)
         self.delete_keyframe_button.clicked.connect(self.delete_selected_keyframe)
+        self.y_auto_check.toggled.connect(self.update_display_range)
+        self.y_min_spin.valueChanged.connect(self.update_display_range)
+        self.y_max_spin.valueChanged.connect(self.update_display_range)
         return group
 
     def refresh_all(self) -> None:
@@ -156,7 +177,7 @@ class MainWindow(QMainWindow):
         self.updating_fields = True
         self.fps_combo.setCurrentIndex(self.fps_combo.findData(self.project.fps))
         self.duration_spin.setValue(self.project.duration_seconds)
-        self.auto_rpm_check.setChecked(self.project.auto_rpm)
+        self.speed_rpm_link_check.setChecked(self.project.speed_rpm_link_enabled)
         self.auto_g_check.setChecked(self.project.auto_longitudinal_g)
         self.frame_spin.setRange(0, self.project.frame_count - 1)
         self.updating_fields = False
@@ -166,10 +187,15 @@ class MainWindow(QMainWindow):
 
     def refresh_parameter_list(self) -> None:
         current_name = self.current_parameter().name if self.current_parameter() else None
+        checked_names = self.checked_parameter_names()
+        self.updating_parameter_list = True
         self.parameter_list.clear()
-        for parameter in self.project.parameters:
+        for index, parameter in enumerate(self.project.parameters):
             item = QListWidgetItem(parameter.name)
             item.setToolTip(parameter.unit)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            checked = parameter.name in checked_names or (not checked_names and index == 0)
+            item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
             self.parameter_list.addItem(item)
         row = 0
         if current_name:
@@ -178,11 +204,20 @@ class MainWindow(QMainWindow):
                     row = index
                     break
         self.parameter_list.setCurrentRow(row if self.project.parameters else -1)
+        self.updating_parameter_list = False
 
     def select_parameter(self, row: int) -> None:
         parameter = self.project.parameters[row] if 0 <= row < len(self.project.parameters) else None
+        if parameter:
+            item = self.parameter_list.item(row)
+            if item and item.checkState() != Qt.CheckState.Checked:
+                self.updating_parameter_list = True
+                item.setCheckState(Qt.CheckState.Checked)
+                self.updating_parameter_list = False
         self.selected_keyframe_index = -1
-        self.curve_editor.set_curve(self.project, parameter)
+        self.configure_value_spin(parameter)
+        self.load_display_range(parameter)
+        self.curve_editor.set_curve(self.project, parameter, self.overlay_parameters())
         self.load_keyframe_fields(0 if parameter and parameter.keyframes else -1)
 
     def current_parameter(self) -> CurveParameter | None:
@@ -191,11 +226,35 @@ class MainWindow(QMainWindow):
             return self.project.parameters[row]
         return None
 
+    def checked_parameter_names(self) -> set[str]:
+        names = set()
+        if not hasattr(self, "parameter_list"):
+            return names
+        for index in range(self.parameter_list.count()):
+            item = self.parameter_list.item(index)
+            if item.checkState() == Qt.CheckState.Checked:
+                names.add(item.text())
+        return names
+
+    def overlay_parameters(self) -> list[CurveParameter]:
+        checked = self.checked_parameter_names()
+        active = self.current_parameter()
+        overlays = [parameter for parameter in self.project.parameters if parameter.name in checked]
+        if active and active not in overlays:
+            overlays.insert(0, active)
+        return overlays
+
+    def update_overlay_selection(self) -> None:
+        if self.updating_parameter_list:
+            return
+        self.curve_editor.set_curve(self.project, self.current_parameter(), self.overlay_parameters())
+
     def new_project(self) -> None:
         self.project = ProjectSettings.create_default(
             fps=self.fps_combo.currentData(),
             duration_seconds=self.duration_spin.value(),
         )
+        sync_speed_rpm(self.project, "speed_kmh")
         self.refresh_all()
 
     def open_csv(self) -> None:
@@ -204,6 +263,7 @@ class MainWindow(QMainWindow):
             return
         try:
             self.project = import_csv(path)
+            sync_speed_rpm(self.project, self.project.speed_rpm_link_source)
         except Exception as error:  # noqa: BLE001
             QMessageBox.critical(self, "打开失败", str(error))
             return
@@ -225,26 +285,30 @@ class MainWindow(QMainWindow):
         if self.updating_fields:
             return
         self.project.set_fps(self.fps_combo.currentData())
+        sync_speed_rpm(self.project, self.project.speed_rpm_link_source)
         self.refresh_all()
 
     def update_duration(self) -> None:
         if self.updating_fields:
             return
         self.project.set_duration(self.duration_spin.value())
+        sync_speed_rpm(self.project, self.project.speed_rpm_link_source)
         self.refresh_all()
 
     def update_auto_flags(self) -> None:
         if self.updating_fields:
             return
-        self.project.auto_rpm = self.auto_rpm_check.isChecked()
+        self.project.speed_rpm_link_enabled = self.speed_rpm_link_check.isChecked()
         self.project.auto_longitudinal_g = self.auto_g_check.isChecked()
-        self.curve_editor.refresh()
-        self.load_keyframe_fields(self.selected_keyframe_index)
+        if self.project.speed_rpm_link_enabled:
+            sync_speed_rpm(self.project, self.project.speed_rpm_link_source)
+        self.refresh_current_curve()
 
     def edit_vehicle_settings(self) -> None:
         dialog = VehicleSettingsDialog(self.project.vehicle_settings, self)
         if dialog.exec():
-            self.curve_editor.refresh()
+            sync_speed_rpm(self.project, self.project.speed_rpm_link_source)
+            self.refresh_current_curve()
             self.statusBar().showMessage("车辆传动设置已更新")
 
     def add_custom_parameter(self) -> None:
@@ -292,23 +356,63 @@ class MainWindow(QMainWindow):
             return
         parameter.keyframes[index] = Keyframe(
             self.frame_spin.value(),
-            self.value_spin.value(),
+            parameter.apply_precision(self.value_spin.value()),
             self.smooth_spin.value(),
         )
         parameter.ensure_endpoints(self.project.frame_count)
-        self.curve_editor.refresh()
-        self.update_status()
+        sync_after_parameter_edit(self.project, parameter.name)
+        self.refresh_current_curve()
 
     def delete_selected_keyframe(self) -> None:
         parameter = self.current_parameter()
         if not parameter or self.project.is_derived(parameter.name):
             return
         parameter.delete_keyframe(self.selected_keyframe_index, self.project.frame_count)
-        self.curve_editor.refresh()
+        sync_after_parameter_edit(self.project, parameter.name)
+        self.refresh_current_curve()
         self.load_keyframe_fields(min(self.selected_keyframe_index, len(parameter.keyframes) - 1))
-        self.update_status()
 
-    def on_curve_changed(self) -> None:
+    def on_curve_changed(self, parameter_name: str) -> None:
+        sync_after_parameter_edit(self.project, parameter_name)
+        self.refresh_current_curve()
+
+    def configure_value_spin(self, parameter: CurveParameter | None) -> None:
+        self.updating_fields = True
+        if parameter:
+            self.value_spin.setDecimals(parameter.decimals)
+            self.value_spin.setSingleStep(parameter.step)
+            self.value_spin.setMinimum(parameter.minimum if parameter.minimum is not None else -1_000_000)
+            self.value_spin.setMaximum(parameter.maximum if parameter.maximum is not None else 1_000_000)
+        self.updating_fields = False
+
+    def load_display_range(self, parameter: CurveParameter | None) -> None:
+        self.updating_fields = True
+        enabled = parameter is not None
+        self.y_auto_check.setEnabled(enabled)
+        self.y_min_spin.setEnabled(enabled and not parameter.display_auto_range if parameter else False)
+        self.y_max_spin.setEnabled(enabled and not parameter.display_auto_range if parameter else False)
+        if parameter:
+            self.y_auto_check.setChecked(parameter.display_auto_range)
+            self.y_min_spin.setValue(parameter.display_min if parameter.display_min is not None else 0.0)
+            self.y_max_spin.setValue(parameter.display_max if parameter.display_max is not None else 1.0)
+        self.updating_fields = False
+
+    def update_display_range(self) -> None:
+        if self.updating_fields:
+            return
+        parameter = self.current_parameter()
+        if not parameter:
+            return
+        parameter.display_auto_range = self.y_auto_check.isChecked()
+        parameter.display_min = self.y_min_spin.value()
+        parameter.display_max = self.y_max_spin.value()
+        self.y_min_spin.setEnabled(not parameter.display_auto_range)
+        self.y_max_spin.setEnabled(not parameter.display_auto_range)
+        self.curve_editor.refresh()
+
+    def refresh_current_curve(self) -> None:
+        self.curve_editor.set_curve(self.project, self.current_parameter(), self.overlay_parameters())
+        self.load_keyframe_fields(self.selected_keyframe_index)
         self.update_status()
 
     def update_status(self) -> None:

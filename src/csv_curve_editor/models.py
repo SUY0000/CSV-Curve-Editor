@@ -4,11 +4,11 @@ from dataclasses import dataclass, field
 
 SUPPORTED_FPS = (24, 25, 30, 50, 60, 120)
 DEFAULT_PARAMETER_SPECS = (
-    ("speed_kmh", "km/h", 0.0),
-    ("rpm", "rpm", 900.0),
-    ("gear", "gear", 1.0),
-    ("longitudinal_g", "g", 0.0),
-    ("lateral_g", "g", 0.0),
+    ("speed_kmh", "km/h", 0.0, 1, 0.1, 0.0, None, 0.0, 240.0),
+    ("rpm", "rpm", 900.0, 0, 1.0, 0.0, None, 0.0, 8000.0),
+    ("gear", "gear", 1.0, 0, 1.0, 1.0, None, 1.0, 6.0),
+    ("longitudinal_g", "g", 0.0, 3, 0.001, None, None, -2.0, 2.0),
+    ("lateral_g", "g", 0.0, 3, 0.001, None, None, -2.0, 2.0),
 )
 
 
@@ -29,12 +29,28 @@ class CurveParameter:
     name: str
     unit: str = ""
     keyframes: list[Keyframe] = field(default_factory=list)
+    decimals: int = 3
+    step: float = 0.001
+    minimum: float | None = None
+    maximum: float | None = None
+    display_min: float | None = None
+    display_max: float | None = None
+    display_auto_range: bool = True
+
+    def apply_precision(self, value: float) -> float:
+        value = float(value)
+        if self.minimum is not None:
+            value = max(self.minimum, value)
+        if self.maximum is not None:
+            value = min(self.maximum, value)
+        return float(round(value, self.decimals))
 
     def ensure_endpoints(self, frame_count: int, default_value: float = 0.0) -> None:
         last_frame = max(0, frame_count - 1)
         self._clamp_and_dedupe(frame_count)
         if not self.keyframes:
-            self.keyframes = [Keyframe(0, default_value), Keyframe(last_frame, default_value)]
+            value = self.apply_precision(default_value)
+            self.keyframes = [Keyframe(0, value), Keyframe(last_frame, value)]
             return
 
         self.keyframes.sort(key=lambda item: item.frame)
@@ -45,9 +61,14 @@ class CurveParameter:
         self._clamp_and_dedupe(frame_count)
 
     def add_keyframe(self, frame: int, value: float, smooth: float = 0.0) -> int:
-        self.keyframes.append(Keyframe(frame, value, smooth))
+        target_frame = int(round(frame))
+        self.keyframes.append(Keyframe(target_frame, self.apply_precision(value), smooth))
         self.keyframes.sort(key=lambda item: item.frame)
-        return self.keyframes.index(next(item for item in self.keyframes if item.frame == int(round(frame))))
+        return self.keyframes.index(next(item for item in self.keyframes if item.frame == target_frame))
+
+    def replace_keyframes(self, keyframes: list[Keyframe], frame_count: int, default_value: float = 0.0) -> None:
+        self.keyframes = [Keyframe(item.frame, self.apply_precision(item.value), item.smooth) for item in keyframes]
+        self.ensure_endpoints(frame_count, default_value)
 
     def delete_keyframe(self, index: int, frame_count: int) -> None:
         if 0 <= index < len(self.keyframes):
@@ -59,7 +80,7 @@ class CurveParameter:
         by_frame: dict[int, Keyframe] = {}
         for keyframe in self.keyframes:
             frame = min(max(0, keyframe.frame), last_frame)
-            by_frame[frame] = Keyframe(frame, keyframe.value, keyframe.smooth)
+            by_frame[frame] = Keyframe(frame, self.apply_precision(keyframe.value), keyframe.smooth)
         self.keyframes = [by_frame[frame] for frame in sorted(by_frame)]
 
 
@@ -78,7 +99,8 @@ class ProjectSettings:
     duration_seconds: float = 10.0
     parameters: list[CurveParameter] = field(default_factory=list)
     vehicle_settings: VehicleSettings = field(default_factory=VehicleSettings)
-    auto_rpm: bool = True
+    speed_rpm_link_enabled: bool = True
+    speed_rpm_link_source: str = "speed_kmh"
     auto_longitudinal_g: bool = True
 
     @property
@@ -88,8 +110,19 @@ class ProjectSettings:
     @classmethod
     def create_default(cls, fps: int = 25, duration_seconds: float = 10.0) -> ProjectSettings:
         project = cls(fps=fps, duration_seconds=duration_seconds)
-        for name, unit, value in DEFAULT_PARAMETER_SPECS:
-            parameter = CurveParameter(name, unit)
+        for spec in DEFAULT_PARAMETER_SPECS:
+            name, unit, value, decimals, step, minimum, maximum, display_min, display_max = spec
+            parameter = CurveParameter(
+                name=name,
+                unit=unit,
+                decimals=decimals,
+                step=step,
+                minimum=minimum,
+                maximum=maximum,
+                display_min=display_min,
+                display_max=display_max,
+                display_auto_range=False,
+            )
             parameter.ensure_endpoints(project.frame_count, value)
             project.parameters.append(parameter)
         return project
@@ -107,7 +140,7 @@ class ProjectSettings:
         self.ensure_parameter_endpoints()
 
     def ensure_parameter_endpoints(self) -> None:
-        defaults = {name: value for name, _unit, value in DEFAULT_PARAMETER_SPECS}
+        defaults = {name: value for name, _unit, value, *_rest in DEFAULT_PARAMETER_SPECS}
         for parameter in self.parameters:
             parameter.ensure_endpoints(self.frame_count, defaults.get(parameter.name, 0.0))
 
@@ -125,6 +158,22 @@ class ProjectSettings:
         return parameter
 
     def is_derived(self, parameter_name: str) -> bool:
-        return (parameter_name == "rpm" and self.auto_rpm) or (
-            parameter_name == "longitudinal_g" and self.auto_longitudinal_g
-        )
+        return parameter_name == "longitudinal_g" and self.auto_longitudinal_g
+
+
+def create_parameter_from_name(name: str, unit: str = "") -> CurveParameter:
+    for spec in DEFAULT_PARAMETER_SPECS:
+        spec_name, spec_unit, _value, decimals, step, minimum, maximum, display_min, display_max = spec
+        if spec_name == name:
+            return CurveParameter(
+                name=name,
+                unit=unit or spec_unit,
+                decimals=decimals,
+                step=step,
+                minimum=minimum,
+                maximum=maximum,
+                display_min=display_min,
+                display_max=display_max,
+                display_auto_range=False,
+            )
+    return CurveParameter(name=name, unit=unit)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 
 from csv_curve_editor.csv_io import export_csv, project_to_rows
-from csv_curve_editor.models import ProjectSettings
+from csv_curve_editor.models import Keyframe, ProjectSettings
 
 
 def test_project_to_rows_matches_fps_and_duration() -> None:
@@ -44,3 +44,19 @@ def test_custom_parameter_is_exported() -> None:
 
     assert len(rows) == 24
     assert rows[0]["boost"] == 1.5
+
+
+def test_integer_precision_parameters_export_as_ints() -> None:
+    project = ProjectSettings.create_default(fps=24, duration_seconds=1.0)
+    rpm = project.get_parameter("rpm")
+    gear = project.get_parameter("gear")
+    assert rpm and gear
+    rpm.replace_keyframes([Keyframe(0, 1234.56), Keyframe(23, 2345.67)], project.frame_count)
+    gear.replace_keyframes([Keyframe(0, 1.2), Keyframe(23, 2.8)], project.frame_count)
+
+    rows = project_to_rows(project)
+
+    assert isinstance(rows[0]["rpm"], int)
+    assert isinstance(rows[0]["gear"], int)
+    assert rows[0]["rpm"] == 1235
+    assert rows[-1]["gear"] == 3

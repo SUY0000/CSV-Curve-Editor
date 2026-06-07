@@ -4,35 +4,26 @@ import csv
 from pathlib import Path
 from typing import TextIO
 
-from .calculations import longitudinal_g_from_speed, speed_to_engine_rpm
+from .calculations import longitudinal_g_from_speed
 from .interpolation import interpolate_keyframes
-from .models import CurveParameter, Keyframe, ProjectSettings
+from .models import Keyframe, ProjectSettings, create_parameter_from_name
 
 BASE_COLUMNS = ["frame", "time_seconds"]
 
 
 def sample_project(project: ProjectSettings) -> dict[str, list[float]]:
     project.ensure_parameter_endpoints()
-    sampled = {
-        parameter.name: interpolate_keyframes(parameter.keyframes, project.frame_count)
-        for parameter in project.parameters
-    }
+    sampled = {}
+    for parameter in project.parameters:
+        values = interpolate_keyframes(parameter.keyframes, project.frame_count)
+        sampled[parameter.name] = [parameter.apply_precision(value) for value in values]
 
-    if project.auto_rpm and "speed_kmh" in sampled and "gear" in sampled:
-        settings = project.vehicle_settings
-        sampled["rpm"] = [
-            speed_to_engine_rpm(
-                speed,
-                int(round(gear)),
-                settings.gear_ratios,
-                settings.final_ratio,
-                settings.wheel_radius_m,
-            )
-            for speed, gear in zip(sampled["speed_kmh"], sampled["gear"], strict=True)
+    longitudinal_g = project.get_parameter("longitudinal_g")
+    if project.auto_longitudinal_g and longitudinal_g and "speed_kmh" in sampled:
+        sampled["longitudinal_g"] = [
+            longitudinal_g.apply_precision(value)
+            for value in longitudinal_g_from_speed(sampled["speed_kmh"], project.fps)
         ]
-
-    if project.auto_longitudinal_g and "speed_kmh" in sampled:
-        sampled["longitudinal_g"] = longitudinal_g_from_speed(sampled["speed_kmh"], project.fps)
 
     return sampled
 
@@ -46,8 +37,9 @@ def project_to_rows(project: ProjectSettings) -> list[dict[str, float | int]]:
             "frame": frame,
             "time_seconds": frame / project.fps,
         }
-        for name in parameter_names:
-            row[name] = sampled.get(name, [0.0] * project.frame_count)[frame]
+        for parameter in project.parameters:
+            value = sampled.get(parameter.name, [0.0] * project.frame_count)[frame]
+            row[parameter.name] = _csv_value(parameter.decimals, value)
         rows.append(row)
     return rows
 
@@ -79,25 +71,18 @@ def _import_csv_file(file: TextIO, fps: int | None = None) -> ProjectSettings:
 
     columns = [name for name in (reader.fieldnames or []) if name not in BASE_COLUMNS]
     for column in columns:
-        parameter = CurveParameter(column, _guess_unit(column))
+        parameter = create_parameter_from_name(column, _guess_unit(column))
         parameter.keyframes = [
-            Keyframe(frame, _to_float(row.get(column, "0")), 0.0)
+            Keyframe(frame, parameter.apply_precision(_to_float(row.get(column, "0"))), 0.0)
             for frame, row in zip(frame_numbers, rows, strict=True)
         ]
         parameter.ensure_endpoints(project.frame_count)
         project.parameters.append(parameter)
 
     existing = {parameter.name for parameter in project.parameters}
-    for name, unit, value in (
-        ("speed_kmh", "km/h", 0.0),
-        ("rpm", "rpm", 900.0),
-        ("gear", "gear", 1.0),
-        ("longitudinal_g", "g", 0.0),
-        ("lateral_g", "g", 0.0),
-    ):
-        if name not in existing:
-            parameter = CurveParameter(name, unit)
-            parameter.ensure_endpoints(project.frame_count, value)
+    defaults = ProjectSettings.create_default(project.fps, project.duration_seconds)
+    for parameter in defaults.parameters:
+        if parameter.name not in existing:
             project.parameters.append(parameter)
     return project
 
@@ -132,3 +117,9 @@ def _to_float(value: str | None) -> float:
         return float(value or 0.0)
     except ValueError:
         return 0.0
+
+
+def _csv_value(decimals: int, value: float) -> float | int:
+    if decimals == 0:
+        return int(round(value))
+    return round(float(value), decimals)
