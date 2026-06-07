@@ -15,6 +15,15 @@ def test_project_to_rows_matches_total_frames() -> None:
     assert rows[-1]["frame"] == 122
 
 
+def test_default_speed_display_range_is_0_to_300() -> None:
+    project = ProjectSettings.create_default()
+    speed = project.get_parameter("speed_kmh")
+
+    assert speed
+    assert speed.display_min == 0.0
+    assert speed.display_max == 300.0
+
+
 def test_export_csv_has_default_columns(tmp_path) -> None:
     project = ProjectSettings.create_default(fps=60, total_frames=60)
     path = tmp_path / "curve.csv"

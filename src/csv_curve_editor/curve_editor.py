@@ -16,6 +16,7 @@ class KeyframePlotWidget(pg.PlotWidget):
     keyframe_added = Signal(int, float)
     keyframe_selected = Signal(int)
     keyframe_moved = Signal(int, int, int, float, float)
+    user_y_range_changed = Signal(float, float)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -74,6 +75,11 @@ class KeyframePlotWidget(pg.PlotWidget):
             event.accept()
             return
         super().mouseReleaseEvent(event)
+        self._emit_user_y_range()
+
+    def wheelEvent(self, event) -> None:
+        super().wheelEvent(event)
+        self._emit_user_y_range()
 
     def mouseDoubleClickEvent(self, event) -> None:
         if self.read_only or event.button() != Qt.MouseButton.LeftButton:
@@ -87,6 +93,10 @@ class KeyframePlotWidget(pg.PlotWidget):
     def _event_to_view(self, position: QPointF) -> QPointF:
         scene_pos = self.mapToScene(position.toPoint())
         return self.plotItem.vb.mapSceneToView(scene_pos)
+
+    def _emit_user_y_range(self) -> None:
+        _x_range, y_range = self.plotItem.vb.viewRange()
+        self.user_y_range_changed.emit(float(y_range[0]), float(y_range[1]))
 
     def _nearest_keyframe_index(self, position: QPointF) -> int | None:
         if not self.keyframes:
@@ -131,7 +141,7 @@ class CurveEditor(QWidget):
         self.plot.keyframe_added.connect(self._add_keyframe)
         self.plot.keyframe_selected.connect(self._select_keyframe)
         self.plot.keyframe_moved.connect(self._move_keyframe)
-        self.plot.getViewBox().sigRangeChanged.connect(self._on_view_range_changed)
+        self.plot.user_y_range_changed.connect(self._on_user_y_range_changed)
 
     def set_curve(
         self,
@@ -188,13 +198,7 @@ class CurveEditor(QWidget):
         )
         self.plot.setLabel("left", "Normalized" if self.multi_overlay else f"Value ({active.unit})")
         self.plot.enableAutoRange(axis="y", enable=False)
-        self.updating_view_range = True
-        if self.multi_overlay:
-            self.plot.setYRange(0.0, 1.0, padding=0.05)
-        else:
-            low, high = self._display_range(active, sampled.get(active.name, []))
-            self.plot.setYRange(low, high, padding=0.0)
-        self.updating_view_range = False
+        self._apply_y_range(sampled.get(active.name, []))
         self.plot.setTitle(f"{active.name} ({'自动派生，只读' if read_only else '可编辑'})")
 
     def select_keyframe(self, index: int) -> None:
@@ -284,13 +288,21 @@ class CurveEditor(QWidget):
             low, high = high, low
         return float(low), float(high)
 
-    def _on_view_range_changed(self, _view_box, ranges) -> None:
+    def _apply_y_range(self, active_values: list[float]) -> None:
+        self.updating_view_range = True
+        if self.multi_overlay:
+            self.plot.setYRange(0.0, 1.0, padding=0.05)
+        elif self.parameter:
+            low, high = self._display_range(self.parameter, active_values)
+            self.plot.setYRange(low, high, padding=0.0)
+        self.updating_view_range = False
+
+    def _on_user_y_range_changed(self, low: float, high: float) -> None:
         if self.updating_view_range or self.multi_overlay or not self.parameter:
             return
-        low, high = ranges[1]
-        self.parameter.display_min = float(low)
-        self.parameter.display_max = float(high)
-        self.y_range_changed.emit(float(low), float(high))
+        self.parameter.display_min = low
+        self.parameter.display_max = high
+        self.y_range_changed.emit(low, high)
 
     def _label_for(self, parameter: CurveParameter, values: list[float]) -> str:
         if not self.multi_overlay:

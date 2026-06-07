@@ -53,7 +53,7 @@ PYTHONPATH=src python -m compileall src
   - `sample_project()` 插值所有参数并应用参数精度，再在自动模式下覆盖 `longitudinal_g` 的派生值；自动纵向 G 使用 `speed_kmh` 的原始插值值计算，避免先按 0.1km/h 精度量化后再求导造成阶梯抖动。
   - `project_to_rows()` 生成每帧一行的导出数据。
   - `import_csv()` 会把已有 CSV 每行作为关键帧导入；当前没有曲线拟合或稀疏化步骤。
-- `src/csv_curve_editor/curve_editor.py` 封装 pyqtgraph 曲线交互：双击添加关键帧、拖动关键帧、选中关键帧。支持一个活动编辑参数和多个勾选叠加显示参数；多参数叠加时按各自 Y 范围归一化。
+- `src/csv_curve_editor/curve_editor.py` 封装 pyqtgraph 曲线交互：双击添加关键帧、拖动关键帧、选中关键帧。支持一个活动编辑参数和多个勾选叠加显示参数；多参数叠加时按各自 Y 范围归一化。Y 轴范围写回不要使用 `pyqtgraph.sigRangeChanged`，该信号会被启动初始化和程序化 `setYRange()` 触发；当前只在用户鼠标释放拖动画布或滚轮缩放后读取 ViewBox 范围并同步到 `Y Min / Y Max`。
 - `src/csv_curve_editor/vehicle_settings.py` 是车辆传动设置对话框，直接更新 `ProjectSettings.vehicle_settings` 内的数据。
 
 ## 关键数据流
@@ -62,7 +62,7 @@ PYTHONPATH=src python -m compileall src
 2. `ProjectSettings.ensure_parameter_endpoints()` 保证每个参数有首尾关键帧，且头尾关键帧不可删除。
 3. `binding.align_linked_keyframes()` / `move_linked_keyframes()` / `delete_linked_keyframes()` 让 `speed_kmh`、`rpm`、`gear`、`longitudinal_g` 的中间关键帧同帧新增、移动、删除，并同步同帧 `smooth`。
 4. 若时速/转速绑定开启，`binding.sync_speed_rpm()` 根据最近编辑源同步另一方；`speed_kmh`、`rpm`、`gear` 变化都会触发同步。
-5. `CurveEditor.refresh()` 显示当前活动参数和勾选叠加参数；多参数叠加时只改变显示比例，不改变真实 CSV 数值。
+5. `CurveEditor.refresh()` 显示当前活动参数和勾选叠加参数；多参数叠加时只改变显示比例，不改变真实 CSV 数值。默认 `speed_kmh` 显示范围为 `0–300`，不要让启动时 pyqtgraph 对全 0 曲线的默认 `-0.5–0.5` 范围写回覆盖参数显示范围。
 6. 导出 CSV 时，`export_csv()` → `project_to_rows()` → `sample_project()`，因此导出的数值会应用参数精度，`longitudinal_g` 会反映自动派生开关状态。
 
 ## 测试结构

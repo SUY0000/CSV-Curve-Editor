@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 SUPPORTED_FPS = (24, 25, 30, 50, 60, 120)
 DEFAULT_PARAMETER_SPECS = (
-    ("speed_kmh", "km/h", 0.0, 1, 0.1, 0.0, None, 0.0, 240.0),
+    ("speed_kmh", "km/h", 0.0, 1, 0.1, 0.0, None, 0.0, 300.0),
     ("rpm", "rpm", 900.0, 0, 1.0, 0.0, None, 0.0, 8000.0),
     ("gear", "gear", 1.0, 0, 1.0, 1.0, None, 1.0, 6.0),
     ("longitudinal_g", "g", 0.0, 3, 0.001, None, None, -2.0, 2.0),
