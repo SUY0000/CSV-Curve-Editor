@@ -36,17 +36,25 @@ def engine_rpm_to_speed_kmh(
 
 def speed_to_engine_rpm(
     speed_kmh: float,
-    gear_number: int,
+    gear_number: float,
     gear_ratios: Sequence[float],
     final_ratio: float,
     wheel_radius_m: float,
 ) -> float:
     if not gear_ratios:
         return 0.0
-    gear_number = min(max(1, gear_number), len(gear_ratios))
-    gear_ratio = gear_ratios[gear_number - 1]
+    gear_ratio = _gear_ratio_for_number(gear_number, gear_ratios)
     wheel_rpm = speed_to_wheel_rpm(speed_kmh, wheel_radius_m)
     return wheel_rpm_to_engine_rpm(wheel_rpm, gear_ratio, final_ratio)
+
+
+def _gear_ratio_for_number(gear_number: float, gear_ratios: Sequence[float]) -> float:
+    gear = min(max(1.0, float(gear_number)), float(len(gear_ratios)))
+    lower_number = int(math.floor(gear))
+    upper_number = int(math.ceil(gear))
+    lower_ratio = gear_ratios[lower_number - 1]
+    upper_ratio = gear_ratios[upper_number - 1]
+    return lower_ratio + (upper_ratio - lower_ratio) * (gear - lower_number)
 
 
 def longitudinal_g_from_speed(speed_kmh_values: Sequence[float], fps: int) -> list[float]:

@@ -47,9 +47,9 @@ PYTHONPATH=src python -m compileall src
   - `Keyframe`：`frame`、`value`、`smooth`。
   - `VehicleSettings`：gear ratios、final ratio、wheel radius、RPM 范围。
 - `src/csv_curve_editor/interpolation.py` 负责把关键帧采样为逐帧数值。`smooth=0` 为线性；`smooth>0` 在线性插值和基于相邻关键帧切线的三次 Hermite/PCHIP 风格插值之间混合，以减少关键帧处锐角；局部峰值/谷值会把切线压到 0，避免明显过冲。
-- `src/csv_curve_editor/calculations.py` 只放纯计算：速度/轮速/RPM 换算，以及由时速差分计算纵向 G；纵向 G 的中间帧使用中心差分，头尾帧使用前向/后向差分。
+- `src/csv_curve_editor/calculations.py` 只放纯计算：速度/轮速/RPM 换算，以及由时速差分计算纵向 G；自动 RPM 计算允许传入浮点挡位，并在相邻 gear ratio 间插值；纵向 G 的中间帧使用中心差分，头尾帧使用前向/后向差分。
 - `src/csv_curve_editor/csv_io.py` 是导入导出和整项目采样层：
-  - `sample_project()` 插值所有参数并应用参数精度，再在自动模式下覆盖 `rpm` 和 `longitudinal_g` 的派生值；自动 RPM 由 `speed_kmh`、`gear`、gear ratios、final ratio、wheel radius 单向计算；自动纵向 G 使用 `speed_kmh` 的原始插值值计算，避免先按 0.1km/h 精度量化后再求导造成阶梯抖动。
+  - `sample_project()` 插值所有参数并应用参数精度，再在自动模式下覆盖 `rpm` 和 `longitudinal_g` 的派生值；`gear` 自身采样为前值保持的整数阶梯，换挡点位于目标挡位关键帧；自动 RPM 由 `speed_kmh`、`gear` 原始插值值、gear ratios、final ratio、wheel radius 单向计算，因此关键帧之间的浮点挡位可让转速回落渐变；自动纵向 G 使用 `speed_kmh` 的原始插值值计算，避免先按 0.1km/h 精度量化后再求导造成阶梯抖动。
   - `project_to_rows()` 生成每帧一行的导出数据。
   - `import_csv()` 会把已有 CSV 每行作为关键帧导入；当前没有曲线拟合或稀疏化步骤。
 - `src/csv_curve_editor/curve_editor.py` 封装 pyqtgraph 曲线交互：双击添加关键帧、拖动关键帧、选中关键帧。支持一个活动编辑参数和多个勾选叠加显示参数；多参数叠加时按各自 Y 范围归一化。Y 轴范围写回不要使用 `pyqtgraph.sigRangeChanged`，该信号会被启动初始化和程序化 `setYRange()` 触发；当前只在用户鼠标释放拖动画布或滚轮缩放后读取 ViewBox 范围并同步到 `Y Min / Y Max`。

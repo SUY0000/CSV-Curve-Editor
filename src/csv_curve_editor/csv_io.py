@@ -6,7 +6,7 @@ from typing import TextIO
 
 from .calculations import longitudinal_g_from_speed, speed_to_engine_rpm
 from .interpolation import interpolate_keyframes
-from .models import Keyframe, ProjectSettings, create_parameter_from_name
+from .models import CurveParameter, Keyframe, ProjectSettings, create_parameter_from_name
 
 BASE_COLUMNS = ["frame", "timecode"]
 LEGACY_BASE_COLUMNS = ["frame", "time_seconds"]
@@ -19,7 +19,7 @@ def sample_project(project: ProjectSettings) -> dict[str, list[float]]:
     for parameter in project.parameters:
         values = interpolate_keyframes(parameter.keyframes, project.frame_count)
         raw_values_by_name[parameter.name] = values
-        sampled[parameter.name] = [parameter.apply_precision(value) for value in values]
+        sampled[parameter.name] = _sample_parameter_values(parameter, values, project.frame_count)
 
     speed_values = raw_values_by_name.get("speed_kmh")
     gear_values = raw_values_by_name.get("gear")
@@ -30,7 +30,7 @@ def sample_project(project: ProjectSettings) -> dict[str, list[float]]:
             rpm.apply_precision(
                 speed_to_engine_rpm(
                     speed,
-                    int(round(gear)),
+                    gear,
                     settings.gear_ratios,
                     settings.final_ratio,
                     settings.wheel_radius_m,
@@ -47,6 +47,21 @@ def sample_project(project: ProjectSettings) -> dict[str, list[float]]:
         ]
 
     return sampled
+
+
+def _sample_parameter_values(parameter: CurveParameter, interpolated_values: list[float], frame_count: int) -> list[float]:
+    if parameter.name != "gear":
+        return [parameter.apply_precision(value) for value in interpolated_values]
+
+    parameter.ensure_endpoints(frame_count)
+    values = [parameter.apply_precision(parameter.keyframes[0].value)] * frame_count
+    keyframes = sorted(parameter.keyframes, key=lambda keyframe: keyframe.frame)
+    for index, keyframe in enumerate(keyframes):
+        start = min(max(0, keyframe.frame), frame_count)
+        end = min(max(0, keyframes[index + 1].frame if index + 1 < len(keyframes) else frame_count), frame_count)
+        for frame in range(start, end):
+            values[frame] = parameter.apply_precision(keyframe.value)
+    return values
 
 
 def project_to_rows(project: ProjectSettings) -> list[dict[str, float | int | str]]:

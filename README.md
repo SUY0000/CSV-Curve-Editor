@@ -8,7 +8,7 @@
 - 根据帧率和总帧数生成每帧一行的 CSV。
 - 默认参数：`speed_kmh`、`rpm`、`gear`、`longitudinal_g`、`lateral_g`。
 - 支持新增自定义参数。
-- 可设置 gear ratio、final ratio、wheel radius，由时速和挡位自动派生转速。
+- 可设置 gear ratio、final ratio、wheel radius，由时速和挡位自动派生转速；`gear` 导出按关键帧阶梯换挡，自动 RPM 计算可使用关键帧之间的浮点挡位过渡。
 - 可根据时速曲线自动反推纵向 G 值。
 - 支持双击添加关键帧、拖动关键帧、编辑 smooth 平滑程度；头尾关键帧不可删除。
 - `rpm`、`gear` 等参数支持按各自精度编辑和导出。
@@ -59,7 +59,7 @@ PYTHONPATH=src pytest tests/test_calculations.py::test_speed_engine_rpm_roundtri
 
 1. 先选择帧率和总帧数。
 2. 保持“RPM 自动绑定”开启时，编辑 `speed_kmh` 和 `gear` 会在导出/采样时自动派生 `rpm`；关闭后可手动编辑 `rpm`。
-3. 编辑 `gear` 曲线，并在“车辆设置”里输入 gear ratios、final ratio、wheel radius。
+3. 编辑 `gear` 曲线，并在“车辆设置”里输入 gear ratios、final ratio、wheel radius。`gear` 的换挡点位于目标挡位关键帧；关键帧之间的浮点挡位只用于自动 RPM 的渐变计算。
 4. 保持“纵向 G 自动计算”开启，让 `longitudinal_g` 随时速自动更新。
 5. 在参数列表中勾选多个参数可叠加显示，选中的行是当前可编辑参数。
 6. 使用 `Y Min / Y Max` 手动控制当前参数的显示范围；也可以直接拖动/缩放图表的 Y 轴，输入框会同步更新。多参数叠加时，各参数按自己的 Y 范围归一化显示。
