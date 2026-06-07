@@ -47,10 +47,10 @@ PYTHONPATH=src python -m compileall src
   - `Keyframe`：`frame`、`value`、`smooth`。
   - `VehicleSettings`：gear ratios、final ratio、wheel radius、RPM 范围。
 - `src/csv_curve_editor/interpolation.py` 负责把关键帧采样为逐帧数值。`smooth=0` 为线性；`smooth>0` 用 smoothstep 与线性插值混合。
-- `src/csv_curve_editor/calculations.py` 只放纯计算：速度/轮速/RPM 换算，以及由时速差分计算纵向 G。
+- `src/csv_curve_editor/calculations.py` 只放纯计算：速度/轮速/RPM 换算，以及由时速差分计算纵向 G；纵向 G 的中间帧使用中心差分，头尾帧使用前向/后向差分。
 - `src/csv_curve_editor/binding.py` 实现时速/转速双向绑定和关联关键帧同步：最近编辑的 `speed_kmh` 或 `rpm` 作为源，另一方按当前 `gear`、gear ratios、final ratio、wheel radius 重建关键帧；`speed_kmh`、`rpm`、`gear`、`longitudinal_g` 新增、移动、删除中间关键帧时会同步到其它关联参数，同帧关联关键帧的 `smooth` 也会同步。
 - `src/csv_curve_editor/csv_io.py` 是导入导出和整项目采样层：
-  - `sample_project()` 插值所有参数并应用参数精度，再在自动模式下覆盖 `longitudinal_g` 的派生值。
+  - `sample_project()` 插值所有参数并应用参数精度，再在自动模式下覆盖 `longitudinal_g` 的派生值；自动纵向 G 使用 `speed_kmh` 的原始插值值计算，避免先按 0.1km/h 精度量化后再求导造成阶梯抖动。
   - `project_to_rows()` 生成每帧一行的导出数据。
   - `import_csv()` 会把已有 CSV 每行作为关键帧导入；当前没有曲线拟合或稀疏化步骤。
 - `src/csv_curve_editor/curve_editor.py` 封装 pyqtgraph 曲线交互：双击添加关键帧、拖动关键帧、选中关键帧。支持一个活动编辑参数和多个勾选叠加显示参数；多参数叠加时按各自 Y 范围归一化。
