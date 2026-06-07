@@ -6,22 +6,31 @@ from typing import TextIO
 
 from .calculations import longitudinal_g_from_speed, speed_to_engine_rpm
 from .interpolation import interpolate_keyframes
+from .jitter import apply_jitter
 from .models import CurveParameter, Keyframe, ProjectSettings, create_parameter_from_name
 
 BASE_COLUMNS = ["frame", "timecode"]
 LEGACY_BASE_COLUMNS = ["frame", "time_seconds"]
 
 
-def sample_project(project: ProjectSettings) -> dict[str, list[float]]:
+def sample_project(project: ProjectSettings, apply_export_jitter: bool = True) -> dict[str, list[float]]:
     project.ensure_parameter_endpoints()
     sampled = {}
     raw_values_by_name = {}
+    derived_input_values_by_name = {}
     for parameter in project.parameters:
         values = interpolate_keyframes(parameter.keyframes, project.frame_count)
         raw_values_by_name[parameter.name] = values
-        sampled[parameter.name] = _sample_parameter_values(parameter, values, project.frame_count)
+        parameter_values = _sample_parameter_values(parameter, values, project.frame_count)
+        export_values = parameter_values
+        if apply_export_jitter and not project.is_derived(parameter.name):
+            export_values = apply_jitter(parameter_values, parameter)
+        sampled[parameter.name] = export_values
+        derived_input_values_by_name[parameter.name] = (
+            export_values if apply_export_jitter and parameter.jitter.affects_derived else values
+        )
 
-    speed_values = raw_values_by_name.get("speed_kmh")
+    speed_values = derived_input_values_by_name.get("speed_kmh")
     gear_values = raw_values_by_name.get("gear")
     rpm = project.get_parameter("rpm")
     if project.auto_rpm and rpm and speed_values is not None and gear_values is not None:

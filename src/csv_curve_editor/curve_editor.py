@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 import pyqtgraph as pg
 
 from .csv_io import sample_project
-from .interpolation import interpolate_keyframes
+from .jitter import jittered_values_for_preview
 from .models import CurveParameter, Keyframe, ProjectSettings
 
 COLORS = ["#33aaff", "#ff9933", "#66cc66", "#cc66ff", "#ff5577", "#dddd55"]
@@ -159,7 +159,7 @@ class CurveEditor(QWidget):
         frame_count = self.project.frame_count
         active = self.parameter
         read_only = self.project.is_derived(active.name)
-        sampled = sample_project(self.project)
+        sampled = sample_project(self.project, apply_export_jitter=False)
         overlays = self._unique_overlays()
         self.multi_overlay = len(overlays) > 1
         self.active_range = self._display_range(active, sampled.get(active.name, []))
@@ -169,13 +169,23 @@ class CurveEditor(QWidget):
             values = sampled.get(parameter.name, [0.0] * frame_count)
             display_values = self._values_to_display(parameter, values)
             label = self._label_for(parameter, values)
+            color = COLORS[index % len(COLORS)]
             item = self.plot.plot(
                 x_values,
                 display_values,
-                pen=pg.mkPen(COLORS[index % len(COLORS)], width=2 if parameter is active else 1),
+                pen=pg.mkPen(color, width=2 if parameter is active else 1),
                 name=label,
             )
             self.plot_items.append(item)
+            if parameter is active and parameter.jitter.enabled and not read_only:
+                preview_values = jittered_values_for_preview(values, parameter)
+                preview_item = self.plot.plot(
+                    x_values,
+                    self._values_to_display(parameter, preview_values),
+                    pen=pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine),
+                    name=f"{parameter.name} jitter preview",
+                )
+                self.plot_items.append(preview_item)
 
         active.ensure_endpoints(frame_count)
         self.points_item.setData(
@@ -247,13 +257,13 @@ class CurveEditor(QWidget):
     def _value_to_display(self, parameter: CurveParameter, value: float) -> float:
         if not self.multi_overlay:
             return value
-        low, high = self._display_range(parameter, sample_project(self.project or ProjectSettings.create_default()).get(parameter.name, []))
+        low, high = self._display_range(parameter, sample_project(self.project or ProjectSettings.create_default(), apply_export_jitter=False).get(parameter.name, []))
         return (value - low) / (high - low)
 
     def _display_to_value(self, parameter: CurveParameter, value: float) -> float:
         if not self.multi_overlay:
             return value
-        low, high = self._display_range(parameter, sample_project(self.project or ProjectSettings.create_default()).get(parameter.name, []))
+        low, high = self._display_range(parameter, sample_project(self.project or ProjectSettings.create_default(), apply_export_jitter=False).get(parameter.name, []))
         return low + value * (high - low)
 
     def _display_range(self, parameter: CurveParameter, values: list[float]) -> tuple[float, float]:

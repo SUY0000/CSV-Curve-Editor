@@ -28,6 +28,17 @@ class Keyframe:
 
 
 @dataclass
+class JitterSettings:
+    enabled: bool = False
+    amplitude: float = 0.0
+    period_frames: int = 12
+    octaves: int = 2
+    seed: int = 1
+    relative: bool = False
+    affects_derived: bool = False
+
+
+@dataclass
 class CurveParameter:
     name: str
     unit: str = ""
@@ -38,6 +49,7 @@ class CurveParameter:
     maximum: float | None = None
     display_min: float | None = None
     display_max: float | None = None
+    jitter: JitterSettings = field(default_factory=JitterSettings)
 
     def apply_precision(self, value: float) -> float:
         value = float(value)

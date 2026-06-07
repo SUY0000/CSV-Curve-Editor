@@ -160,6 +160,7 @@ class MainWindow(QMainWindow):
         range_form.addRow("Y Min", self.y_min_spin)
         range_form.addRow("Y Max", self.y_max_spin)
         layout.addLayout(range_form)
+        layout.addWidget(self._build_jitter_group())
         layout.addStretch(1)
 
         self.frame_spin.valueChanged.connect(self.update_selected_keyframe)
@@ -168,6 +169,41 @@ class MainWindow(QMainWindow):
         self.delete_keyframe_button.clicked.connect(self.delete_selected_keyframe)
         self.y_min_spin.valueChanged.connect(self.update_display_range)
         self.y_max_spin.valueChanged.connect(self.update_display_range)
+        return group
+
+    def _build_jitter_group(self) -> QGroupBox:
+        group = QGroupBox("导出抖动")
+        form = QFormLayout(group)
+
+        self.jitter_enabled_check = QCheckBox("启用")
+        self.jitter_amplitude_spin = QDoubleSpinBox()
+        self.jitter_amplitude_spin.setRange(0.0, 1_000_000.0)
+        self.jitter_amplitude_spin.setDecimals(3)
+        self.jitter_amplitude_spin.setSingleStep(0.1)
+        self.jitter_period_spin = QSpinBox()
+        self.jitter_period_spin.setRange(1, 1000)
+        self.jitter_octaves_spin = QSpinBox()
+        self.jitter_octaves_spin.setRange(1, 4)
+        self.jitter_seed_spin = QSpinBox()
+        self.jitter_seed_spin.setRange(0, 999_999)
+        self.jitter_relative_check = QCheckBox("相对幅度")
+        self.jitter_affects_derived_check = QCheckBox("参与派生")
+
+        form.addRow(self.jitter_enabled_check)
+        form.addRow("幅度", self.jitter_amplitude_spin)
+        form.addRow("周期(Frame)", self.jitter_period_spin)
+        form.addRow("细节", self.jitter_octaves_spin)
+        form.addRow("Seed", self.jitter_seed_spin)
+        form.addRow(self.jitter_relative_check)
+        form.addRow(self.jitter_affects_derived_check)
+
+        self.jitter_enabled_check.toggled.connect(self.update_jitter_settings)
+        self.jitter_amplitude_spin.valueChanged.connect(self.update_jitter_settings)
+        self.jitter_period_spin.valueChanged.connect(self.update_jitter_settings)
+        self.jitter_octaves_spin.valueChanged.connect(self.update_jitter_settings)
+        self.jitter_seed_spin.valueChanged.connect(self.update_jitter_settings)
+        self.jitter_relative_check.toggled.connect(self.update_jitter_settings)
+        self.jitter_affects_derived_check.toggled.connect(self.update_jitter_settings)
         return group
 
     def refresh_all(self) -> None:
@@ -219,6 +255,7 @@ class MainWindow(QMainWindow):
         self.selected_keyframe_index = -1
         self.configure_value_spin(parameter)
         self.load_display_range(parameter)
+        self.load_jitter_settings(parameter)
         self.curve_editor.set_curve(self.project, parameter, self.overlay_parameters())
         self.load_keyframe_fields(0 if parameter and parameter.keyframes else -1)
 
@@ -408,6 +445,55 @@ class MainWindow(QMainWindow):
             return
         parameter.display_min = self.y_min_spin.value()
         parameter.display_max = self.y_max_spin.value()
+        self.curve_editor.refresh()
+
+    def load_jitter_settings(self, parameter: CurveParameter | None) -> None:
+        self.updating_fields = True
+        enabled = bool(parameter and not self.project.is_derived(parameter.name))
+        for widget in (
+            self.jitter_enabled_check,
+            self.jitter_amplitude_spin,
+            self.jitter_period_spin,
+            self.jitter_octaves_spin,
+            self.jitter_seed_spin,
+            self.jitter_relative_check,
+            self.jitter_affects_derived_check,
+        ):
+            widget.setEnabled(enabled)
+        if parameter:
+            jitter = parameter.jitter
+            self.jitter_enabled_check.setChecked(jitter.enabled)
+            self.jitter_amplitude_spin.setDecimals(parameter.decimals)
+            self.jitter_amplitude_spin.setSingleStep(parameter.step)
+            self.jitter_amplitude_spin.setValue(abs(jitter.amplitude))
+            self.jitter_period_spin.setValue(jitter.period_frames)
+            self.jitter_octaves_spin.setValue(jitter.octaves)
+            self.jitter_seed_spin.setValue(jitter.seed)
+            self.jitter_relative_check.setChecked(jitter.relative)
+            self.jitter_affects_derived_check.setChecked(jitter.affects_derived)
+        else:
+            self.jitter_enabled_check.setChecked(False)
+            self.jitter_amplitude_spin.setValue(0.0)
+            self.jitter_period_spin.setValue(12)
+            self.jitter_octaves_spin.setValue(2)
+            self.jitter_seed_spin.setValue(1)
+            self.jitter_relative_check.setChecked(False)
+            self.jitter_affects_derived_check.setChecked(False)
+        self.updating_fields = False
+
+    def update_jitter_settings(self) -> None:
+        if self.updating_fields:
+            return
+        parameter = self.current_parameter()
+        if not parameter or self.project.is_derived(parameter.name):
+            return
+        parameter.jitter.enabled = self.jitter_enabled_check.isChecked()
+        parameter.jitter.amplitude = self.jitter_amplitude_spin.value()
+        parameter.jitter.period_frames = self.jitter_period_spin.value()
+        parameter.jitter.octaves = self.jitter_octaves_spin.value()
+        parameter.jitter.seed = self.jitter_seed_spin.value()
+        parameter.jitter.relative = self.jitter_relative_check.isChecked()
+        parameter.jitter.affects_derived = self.jitter_affects_derived_check.isChecked()
         self.curve_editor.refresh()
 
     def load_y_range_from_plot(self, low: float, high: float) -> None:

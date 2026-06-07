@@ -94,3 +94,56 @@ def test_auto_longitudinal_g_uses_unrounded_speed_values() -> None:
 
     assert sampled["speed_kmh"] == [0.0, 0.1, 0.1]
     assert sampled["longitudinal_g"] == [0.001, 0.001, 0.001]
+
+
+def test_sample_project_applies_export_jitter_to_regular_parameters() -> None:
+    project = ProjectSettings.create_default(fps=24, total_frames=8)
+    throttle = project.get_parameter("throttle_pct")
+    assert throttle
+    throttle.replace_keyframes([Keyframe(0, 50.0), Keyframe(7, 50.0)], project.frame_count)
+    throttle.jitter.enabled = True
+    throttle.jitter.amplitude = 5.0
+    throttle.jitter.period_frames = 4
+    throttle.jitter.seed = 7
+
+    jittered = sample_project(project)["throttle_pct"]
+    original = sample_project(project, apply_export_jitter=False)["throttle_pct"]
+
+    assert original == [50.0] * 8
+    assert jittered != original
+    assert jittered == sample_project(project)["throttle_pct"]
+
+
+def test_sample_project_does_not_apply_jitter_to_auto_derived_parameter() -> None:
+    project = ProjectSettings.create_default(fps=24, total_frames=4)
+    longitudinal_g = project.get_parameter("longitudinal_g")
+    assert longitudinal_g
+    longitudinal_g.jitter.enabled = True
+    longitudinal_g.jitter.amplitude = 1.0
+
+    assert sample_project(project)["longitudinal_g"] == [0.0, 0.0, 0.0, 0.0]
+
+
+def test_source_jitter_does_not_affect_derived_values_by_default() -> None:
+    project = ProjectSettings.create_default(fps=24, total_frames=4)
+    speed = project.get_parameter("speed_kmh")
+    assert speed
+    speed.replace_keyframes([Keyframe(0, 50.0), Keyframe(3, 50.0)], project.frame_count)
+    speed.jitter.enabled = True
+    speed.jitter.amplitude = 5.0
+    speed.jitter.period_frames = 4
+
+    assert sample_project(project)["longitudinal_g"] == [0.0, 0.0, 0.0, 0.0]
+
+
+def test_source_jitter_can_affect_derived_values() -> None:
+    project = ProjectSettings.create_default(fps=24, total_frames=4)
+    speed = project.get_parameter("speed_kmh")
+    assert speed
+    speed.replace_keyframes([Keyframe(0, 50.0), Keyframe(3, 50.0)], project.frame_count)
+    speed.jitter.enabled = True
+    speed.jitter.amplitude = 5.0
+    speed.jitter.period_frames = 4
+    speed.jitter.affects_derived = True
+
+    assert sample_project(project)["longitudinal_g"] != [0.0, 0.0, 0.0, 0.0]
