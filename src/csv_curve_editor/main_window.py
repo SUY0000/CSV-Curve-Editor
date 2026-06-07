@@ -97,9 +97,12 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
-        left_layout.addWidget(QLabel("参数（勾选为叠加显示，选中为编辑）"))
+        self.parameter_list_label = QLabel("参数（选中为编辑）")
+        self.multi_select_check = QCheckBox("多选显示")
         self.parameter_list = QListWidget()
         self.add_parameter_button = QPushButton("新增自定义参数")
+        left_layout.addWidget(self.parameter_list_label)
+        left_layout.addWidget(self.multi_select_check)
         left_layout.addWidget(self.parameter_list)
         left_layout.addWidget(self.add_parameter_button)
 
@@ -118,6 +121,7 @@ class MainWindow(QMainWindow):
 
         self.parameter_list.currentRowChanged.connect(self.select_parameter)
         self.parameter_list.itemChanged.connect(self.update_overlay_selection)
+        self.multi_select_check.toggled.connect(self.update_multi_select_mode)
         self.add_parameter_button.clicked.connect(self.add_custom_parameter)
         self.curve_editor.curve_changed.connect(self.on_curve_changed)
         self.curve_editor.keyframe_selected.connect(self.load_keyframe_fields)
@@ -183,13 +187,17 @@ class MainWindow(QMainWindow):
         current_name = self.current_parameter().name if self.current_parameter() else None
         checked_names = self.checked_parameter_names()
         self.updating_parameter_list = True
+        multi_select = self.multi_select_check.isChecked()
         self.parameter_list.clear()
         for index, parameter in enumerate(self.project.parameters):
             item = QListWidgetItem(parameter.name)
             item.setToolTip(parameter.unit)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            checked = parameter.name in checked_names or (not checked_names and index == 0)
-            item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+            if multi_select:
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                checked = parameter.name in checked_names or (not checked_names and index == 0)
+                item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+            else:
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
             self.parameter_list.addItem(item)
         row = 0
         if current_name:
@@ -202,7 +210,7 @@ class MainWindow(QMainWindow):
 
     def select_parameter(self, row: int) -> None:
         parameter = self.project.parameters[row] if 0 <= row < len(self.project.parameters) else None
-        if parameter:
+        if parameter and self.multi_select_check.isChecked():
             item = self.parameter_list.item(row)
             if item and item.checkState() != Qt.CheckState.Checked:
                 self.updating_parameter_list = True
@@ -222,7 +230,7 @@ class MainWindow(QMainWindow):
 
     def checked_parameter_names(self) -> set[str]:
         names = set()
-        if not hasattr(self, "parameter_list"):
+        if not hasattr(self, "parameter_list") or not self.multi_select_check.isChecked():
             return names
         for index in range(self.parameter_list.count()):
             item = self.parameter_list.item(index)
@@ -242,6 +250,13 @@ class MainWindow(QMainWindow):
         if self.updating_parameter_list:
             return
         self.curve_editor.set_curve(self.project, self.current_parameter(), self.overlay_parameters())
+
+    def update_multi_select_mode(self) -> None:
+        self.parameter_list_label.setText(
+            "参数（勾选为叠加显示，选中为编辑）" if self.multi_select_check.isChecked() else "参数（选中为编辑）"
+        )
+        self.refresh_parameter_list()
+        self.select_parameter(self.parameter_list.currentRow())
 
     def new_project(self) -> None:
         self.project = ProjectSettings.create_default(
