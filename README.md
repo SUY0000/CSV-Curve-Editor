@@ -62,4 +62,5 @@ PYTHONPATH=src pytest tests/test_calculations.py::test_speed_engine_rpm_roundtri
 3. 编辑 `gear` 曲线，并在“车辆设置”里输入 gear ratios、final ratio、wheel radius。
 4. 保持“纵向 G 自动计算”开启，让 `longitudinal_g` 随时速自动更新。
 5. 在参数列表中勾选多个参数可叠加显示，选中的行是当前可编辑参数。
-6. 导出 CSV 给后期 UI 特效使用。
+6. 使用 `Y Min / Y Max` 手动控制当前参数的显示范围；也可以直接拖动/缩放图表的 Y 轴，输入框会同步更新。多参数叠加时，各参数按自己的 Y 范围归一化显示。
+7. 导出 CSV 给后期 UI 特效使用。

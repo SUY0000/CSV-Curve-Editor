@@ -98,6 +98,7 @@ class KeyframePlotWidget(pg.PlotWidget):
 class CurveEditor(QWidget):
     curve_changed = Signal(str)
     keyframe_selected = Signal(int)
+    y_range_changed = Signal(float, float)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -107,6 +108,7 @@ class CurveEditor(QWidget):
         self.selected_index = -1
         self.multi_overlay = False
         self.active_range = (0.0, 1.0)
+        self.updating_view_range = False
 
         self.plot = KeyframePlotWidget()
         self.plot.addLegend()
@@ -121,6 +123,7 @@ class CurveEditor(QWidget):
         self.plot.keyframe_added.connect(self._add_keyframe)
         self.plot.keyframe_selected.connect(self._select_keyframe)
         self.plot.keyframe_moved.connect(self._move_keyframe)
+        self.plot.getViewBox().sigRangeChanged.connect(self._on_view_range_changed)
 
     def set_curve(
         self,
@@ -176,6 +179,14 @@ class CurveEditor(QWidget):
             lambda value: active.apply_precision(self._display_to_value(active, value)),
         )
         self.plot.setLabel("left", "Normalized" if self.multi_overlay else f"Value ({active.unit})")
+        self.plot.enableAutoRange(axis="y", enable=False)
+        self.updating_view_range = True
+        if self.multi_overlay:
+            self.plot.setYRange(0.0, 1.0, padding=0.05)
+        else:
+            low, high = self._display_range(active, sampled.get(active.name, []))
+            self.plot.setYRange(low, high, padding=0.0)
+        self.updating_view_range = False
         self.plot.setTitle(f"{active.name} ({'自动派生，只读' if read_only else '可编辑'})")
 
     def select_keyframe(self, index: int) -> None:
@@ -242,7 +253,7 @@ class CurveEditor(QWidget):
         return low + value * (high - low)
 
     def _display_range(self, parameter: CurveParameter, values: list[float]) -> tuple[float, float]:
-        if not parameter.display_auto_range and parameter.display_min is not None and parameter.display_max is not None:
+        if parameter.display_min is not None and parameter.display_max is not None:
             low, high = parameter.display_min, parameter.display_max
         elif values:
             low, high = min(values), max(values)
@@ -252,7 +263,17 @@ class CurveEditor(QWidget):
             pad = 1.0 if low == 0 else abs(low) * 0.1
             low -= pad
             high += pad
+        if low > high:
+            low, high = high, low
         return float(low), float(high)
+
+    def _on_view_range_changed(self, _view_box, ranges) -> None:
+        if self.updating_view_range or self.multi_overlay or not self.parameter:
+            return
+        low, high = ranges[1]
+        self.parameter.display_min = float(low)
+        self.parameter.display_max = float(high)
+        self.y_range_changed.emit(float(low), float(high))
 
     def _label_for(self, parameter: CurveParameter, values: list[float]) -> str:
         if not self.multi_overlay:

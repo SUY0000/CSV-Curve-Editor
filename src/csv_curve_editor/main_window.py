@@ -125,6 +125,7 @@ class MainWindow(QMainWindow):
         self.add_parameter_button.clicked.connect(self.add_custom_parameter)
         self.curve_editor.curve_changed.connect(self.on_curve_changed)
         self.curve_editor.keyframe_selected.connect(self.load_keyframe_fields)
+        self.curve_editor.y_range_changed.connect(self.load_y_range_from_plot)
 
     def _build_keyframe_group(self) -> QGroupBox:
         group = QGroupBox("关键帧 / 显示范围")
@@ -148,7 +149,6 @@ class MainWindow(QMainWindow):
         layout.addLayout(keyframe_form)
         layout.addWidget(self.delete_keyframe_button)
 
-        self.y_auto_check = QCheckBox("Y Auto")
         self.y_min_spin = QDoubleSpinBox()
         self.y_min_spin.setRange(-1_000_000, 1_000_000)
         self.y_min_spin.setDecimals(3)
@@ -157,7 +157,6 @@ class MainWindow(QMainWindow):
         self.y_max_spin.setDecimals(3)
 
         range_form = QFormLayout()
-        range_form.addRow("", self.y_auto_check)
         range_form.addRow("Y Min", self.y_min_spin)
         range_form.addRow("Y Max", self.y_max_spin)
         layout.addLayout(range_form)
@@ -167,7 +166,6 @@ class MainWindow(QMainWindow):
         self.value_spin.valueChanged.connect(self.update_selected_keyframe)
         self.smooth_spin.valueChanged.connect(self.update_selected_keyframe)
         self.delete_keyframe_button.clicked.connect(self.delete_selected_keyframe)
-        self.y_auto_check.toggled.connect(self.update_display_range)
         self.y_min_spin.valueChanged.connect(self.update_display_range)
         self.y_max_spin.valueChanged.connect(self.update_display_range)
         return group
@@ -388,11 +386,9 @@ class MainWindow(QMainWindow):
     def load_display_range(self, parameter: CurveParameter | None) -> None:
         self.updating_fields = True
         enabled = parameter is not None
-        self.y_auto_check.setEnabled(enabled)
-        self.y_min_spin.setEnabled(enabled and not parameter.display_auto_range if parameter else False)
-        self.y_max_spin.setEnabled(enabled and not parameter.display_auto_range if parameter else False)
+        self.y_min_spin.setEnabled(enabled)
+        self.y_max_spin.setEnabled(enabled)
         if parameter:
-            self.y_auto_check.setChecked(parameter.display_auto_range)
             self.y_min_spin.setValue(parameter.display_min if parameter.display_min is not None else 0.0)
             self.y_max_spin.setValue(parameter.display_max if parameter.display_max is not None else 1.0)
         self.updating_fields = False
@@ -403,12 +399,15 @@ class MainWindow(QMainWindow):
         parameter = self.current_parameter()
         if not parameter:
             return
-        parameter.display_auto_range = self.y_auto_check.isChecked()
         parameter.display_min = self.y_min_spin.value()
         parameter.display_max = self.y_max_spin.value()
-        self.y_min_spin.setEnabled(not parameter.display_auto_range)
-        self.y_max_spin.setEnabled(not parameter.display_auto_range)
         self.curve_editor.refresh()
+
+    def load_y_range_from_plot(self, low: float, high: float) -> None:
+        self.updating_fields = True
+        self.y_min_spin.setValue(low)
+        self.y_max_spin.setValue(high)
+        self.updating_fields = False
 
     def refresh_current_curve(self) -> None:
         self.curve_editor.set_curve(self.project, self.current_parameter(), self.overlay_parameters())

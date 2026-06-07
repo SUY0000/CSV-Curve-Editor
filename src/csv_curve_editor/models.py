@@ -35,7 +35,6 @@ class CurveParameter:
     maximum: float | None = None
     display_min: float | None = None
     display_max: float | None = None
-    display_auto_range: bool = True
 
     def apply_precision(self, value: float) -> float:
         value = float(value)
@@ -121,7 +120,6 @@ class ProjectSettings:
                 maximum=maximum,
                 display_min=display_min,
                 display_max=display_max,
-                display_auto_range=False,
             )
             parameter.ensure_endpoints(project.frame_count, value)
             project.parameters.append(parameter)
@@ -174,6 +172,5 @@ def create_parameter_from_name(name: str, unit: str = "") -> CurveParameter:
                 maximum=maximum,
                 display_min=display_min,
                 display_max=display_max,
-                display_auto_range=False,
             )
     return CurveParameter(name=name, unit=unit)
