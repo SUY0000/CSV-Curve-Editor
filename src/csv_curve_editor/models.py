@@ -109,8 +109,7 @@ class ProjectSettings:
     total_frames: int = 250
     parameters: list[CurveParameter] = field(default_factory=list)
     vehicle_settings: VehicleSettings = field(default_factory=VehicleSettings)
-    speed_rpm_link_enabled: bool = True
-    speed_rpm_link_source: str = "speed_kmh"
+    auto_rpm: bool = True
     auto_longitudinal_g: bool = True
 
     @property
@@ -183,7 +182,9 @@ class ProjectSettings:
         return parameter
 
     def is_derived(self, parameter_name: str) -> bool:
-        return parameter_name == "longitudinal_g" and self.auto_longitudinal_g
+        return (parameter_name == "rpm" and self.auto_rpm) or (
+            parameter_name == "longitudinal_g" and self.auto_longitudinal_g
+        )
 
 
 def create_parameter_from_name(name: str, unit: str = "") -> CurveParameter:

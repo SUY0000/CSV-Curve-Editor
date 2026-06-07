@@ -25,7 +25,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .binding import delete_linked_keyframes, move_linked_keyframes, sync_after_parameter_edit, sync_linked_smooth, sync_speed_rpm
 from .csv_io import export_csv, import_csv
 from .curve_editor import CurveEditor
 from .models import CurveParameter, Keyframe, ProjectSettings, SUPPORTED_FPS
@@ -37,7 +36,6 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("CSV Curve Editor")
         self.project = ProjectSettings.create_default()
-        sync_speed_rpm(self.project, "speed_kmh")
         self.selected_keyframe_index = -1
         self.updating_fields = False
         self.updating_parameter_list = False
@@ -65,9 +63,9 @@ class MainWindow(QMainWindow):
         self.total_frames_spin.setValue(self.project.frame_count)
         self.total_frames_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.PlusMinus)
 
-        self.speed_rpm_link_check = QCheckBox("时速/转速绑定")
+        self.auto_rpm_check = QCheckBox("RPM 自动绑定")
         self.auto_g_check = QCheckBox("纵向 G 自动计算")
-        self.speed_rpm_link_check.setChecked(self.project.speed_rpm_link_enabled)
+        self.auto_rpm_check.setChecked(self.project.auto_rpm)
         self.auto_g_check.setChecked(self.project.auto_longitudinal_g)
 
         toolbar.addWidget(new_button)
@@ -80,7 +78,7 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.total_frames_spin)
         toolbar.addSeparator()
         toolbar.addWidget(vehicle_button)
-        toolbar.addWidget(self.speed_rpm_link_check)
+        toolbar.addWidget(self.auto_rpm_check)
         toolbar.addWidget(self.auto_g_check)
 
         new_button.clicked.connect(self.new_project)
@@ -89,7 +87,7 @@ class MainWindow(QMainWindow):
         vehicle_button.clicked.connect(self.edit_vehicle_settings)
         self.fps_combo.currentIndexChanged.connect(self.update_fps)
         self.total_frames_spin.valueChanged.connect(self.update_total_frames)
-        self.speed_rpm_link_check.toggled.connect(self.update_auto_flags)
+        self.auto_rpm_check.toggled.connect(self.update_auto_flags)
         self.auto_g_check.toggled.connect(self.update_auto_flags)
 
     def _build_central_widget(self) -> None:
@@ -173,7 +171,7 @@ class MainWindow(QMainWindow):
         self.updating_fields = True
         self.fps_combo.setCurrentIndex(self.fps_combo.findData(self.project.fps))
         self.total_frames_spin.setValue(self.project.frame_count)
-        self.speed_rpm_link_check.setChecked(self.project.speed_rpm_link_enabled)
+        self.auto_rpm_check.setChecked(self.project.auto_rpm)
         self.auto_g_check.setChecked(self.project.auto_longitudinal_g)
         self.frame_spin.setRange(0, self.project.frame_count - 1)
         self.updating_fields = False
@@ -250,7 +248,6 @@ class MainWindow(QMainWindow):
             fps=self.fps_combo.currentData(),
             total_frames=self.total_frames_spin.value(),
         )
-        sync_speed_rpm(self.project, "speed_kmh")
         self.refresh_all()
 
     def open_csv(self) -> None:
@@ -259,7 +256,6 @@ class MainWindow(QMainWindow):
             return
         try:
             self.project = import_csv(path)
-            sync_speed_rpm(self.project, self.project.speed_rpm_link_source)
         except Exception as error:  # noqa: BLE001
             QMessageBox.critical(self, "打开失败", str(error))
             return
@@ -281,29 +277,24 @@ class MainWindow(QMainWindow):
         if self.updating_fields:
             return
         self.project.set_fps(self.fps_combo.currentData())
-        sync_speed_rpm(self.project, self.project.speed_rpm_link_source)
         self.refresh_all()
 
     def update_total_frames(self) -> None:
         if self.updating_fields:
             return
         self.project.set_total_frames(self.total_frames_spin.value())
-        sync_speed_rpm(self.project, self.project.speed_rpm_link_source)
         self.refresh_all()
 
     def update_auto_flags(self) -> None:
         if self.updating_fields:
             return
-        self.project.speed_rpm_link_enabled = self.speed_rpm_link_check.isChecked()
+        self.project.auto_rpm = self.auto_rpm_check.isChecked()
         self.project.auto_longitudinal_g = self.auto_g_check.isChecked()
-        if self.project.speed_rpm_link_enabled:
-            sync_speed_rpm(self.project, self.project.speed_rpm_link_source)
         self.refresh_current_curve()
 
     def edit_vehicle_settings(self) -> None:
         dialog = VehicleSettingsDialog(self.project.vehicle_settings, self)
         if dialog.exec():
-            sync_speed_rpm(self.project, self.project.speed_rpm_link_source)
             self.refresh_current_curve()
             self.statusBar().showMessage("车辆传动设置已更新")
 
@@ -354,17 +345,12 @@ class MainWindow(QMainWindow):
         index = self.selected_keyframe_index
         if not parameter or self.project.is_derived(parameter.name) or not (0 <= index < len(parameter.keyframes)):
             return
-        old_frame = parameter.keyframes[index].frame
-        new_frame = self.frame_spin.value()
-        value = parameter.apply_precision(self.value_spin.value())
-        smooth = self.smooth_spin.value()
-        if parameter.name in {"speed_kmh", "rpm", "gear", "longitudinal_g"}:
-            move_linked_keyframes(self.project, parameter.name, old_frame, new_frame, value, smooth)
-            sync_linked_smooth(self.project, new_frame, smooth)
-        else:
-            parameter.keyframes[index] = Keyframe(new_frame, value, smooth)
-            parameter.ensure_endpoints(self.project.frame_count)
-            sync_after_parameter_edit(self.project, parameter.name)
+        parameter.keyframes[index] = Keyframe(
+            self.frame_spin.value(),
+            parameter.apply_precision(self.value_spin.value()),
+            self.smooth_spin.value(),
+        )
+        parameter.ensure_endpoints(self.project.frame_count)
         self.refresh_current_curve()
 
     def delete_selected_keyframe(self) -> None:
@@ -373,16 +359,11 @@ class MainWindow(QMainWindow):
             return
         if not 0 <= self.selected_keyframe_index < len(parameter.keyframes):
             return
-        frame = parameter.keyframes[self.selected_keyframe_index].frame
-        if parameter.name in {"speed_kmh", "rpm", "gear", "longitudinal_g"}:
-            delete_linked_keyframes(self.project, frame)
-        else:
-            parameter.delete_keyframe(self.selected_keyframe_index, self.project.frame_count)
+        parameter.delete_keyframe(self.selected_keyframe_index, self.project.frame_count)
         self.refresh_current_curve()
         self.load_keyframe_fields(min(self.selected_keyframe_index, len(parameter.keyframes) - 1))
 
     def on_curve_changed(self, parameter_name: str) -> None:
-        sync_after_parameter_edit(self.project, parameter_name)
         self.refresh_current_curve()
 
     def configure_value_spin(self, parameter: CurveParameter | None) -> None:

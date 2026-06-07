@@ -66,6 +66,7 @@ def test_frame_to_timecode_uses_film_style_frame_count() -> None:
 
 def test_integer_precision_parameters_export_as_ints() -> None:
     project = ProjectSettings.create_default(fps=24, total_frames=24)
+    project.auto_rpm = False
     rpm = project.get_parameter("rpm")
     gear = project.get_parameter("gear")
     assert rpm and gear

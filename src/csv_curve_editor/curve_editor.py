@@ -4,7 +4,6 @@ from PySide6.QtCore import QPointF, Qt, Signal
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 import pyqtgraph as pg
 
-from .binding import move_linked_keyframes
 from .csv_io import sample_project
 from .interpolation import interpolate_keyframes
 from .models import CurveParameter, Keyframe, ProjectSettings
@@ -15,7 +14,7 @@ COLORS = ["#33aaff", "#ff9933", "#66cc66", "#cc66ff", "#ff5577", "#dddd55"]
 class KeyframePlotWidget(pg.PlotWidget):
     keyframe_added = Signal(int, float)
     keyframe_selected = Signal(int)
-    keyframe_moved = Signal(int, int, int, float, float)
+    keyframe_moved = Signal(int, int, float)
     user_y_range_changed = Signal(float, float)
 
     def __init__(self, parent=None) -> None:
@@ -59,14 +58,7 @@ class KeyframePlotWidget(pg.PlotWidget):
             return
         point = self._event_to_view(event.position())
         frame = min(max(0, int(round(point.x()))), self.frame_count - 1)
-        keyframe = self.keyframes[self.drag_index]
-        self.keyframe_moved.emit(
-            self.drag_index,
-            keyframe.frame,
-            frame,
-            self.value_from_display(point.y()),
-            keyframe.smooth,
-        )
+        self.keyframe_moved.emit(self.drag_index, frame, self.value_from_display(point.y()))
         event.accept()
 
     def mouseReleaseEvent(self, event) -> None:
@@ -226,33 +218,24 @@ class CurveEditor(QWidget):
         self.selected_index = index
         self.keyframe_selected.emit(index)
 
-    def _move_keyframe(self, index: int, old_frame: int, frame: int, value: float, smooth: float) -> None:
+    def _move_keyframe(self, index: int, frame: int, value: float) -> None:
         if not self.project or not self.parameter or not (0 <= index < len(self.parameter.keyframes)):
             return
         value = self.parameter.apply_precision(value)
-        if self.parameter.name in {"speed_kmh", "rpm", "gear", "longitudinal_g"}:
-            move_linked_keyframes(self.project, self.parameter.name, old_frame, frame, value, smooth)
-            self.selected_index = next(
-                (
-                    item_index
-                    for item_index, keyframe in enumerate(self.parameter.keyframes)
-                    if keyframe.frame == min(max(0, frame), self.project.frame_count - 1)
-                ),
-                min(index, len(self.parameter.keyframes) - 1),
-            )
-        else:
-            self.parameter.keyframes[index] = Keyframe(frame, value, smooth)
-            self.parameter.ensure_endpoints(self.project.frame_count)
-            self.selected_index = next(
-                (
-                    item_index
-                    for item_index, keyframe in enumerate(self.parameter.keyframes)
-                    if keyframe.frame == frame and keyframe.smooth == smooth
-                ),
-                min(index, len(self.parameter.keyframes) - 1),
-            )
+        smooth = self.parameter.keyframes[index].smooth
+        self.parameter.keyframes[index] = Keyframe(frame, value, smooth)
+        self.parameter.ensure_endpoints(self.project.frame_count)
+        self.selected_index = next(
+            (
+                item_index
+                for item_index, keyframe in enumerate(self.parameter.keyframes)
+                if keyframe.frame == frame and keyframe.smooth == smooth
+            ),
+            min(index, len(self.parameter.keyframes) - 1),
+        )
         self.refresh()
         self.keyframe_selected.emit(self.selected_index)
+        self.curve_changed.emit(self.parameter.name)
 
     def _values_to_display(self, parameter: CurveParameter, values: list[float]) -> list[float]:
         if not self.multi_overlay:

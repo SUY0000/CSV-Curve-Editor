@@ -4,7 +4,7 @@ import csv
 from pathlib import Path
 from typing import TextIO
 
-from .calculations import longitudinal_g_from_speed
+from .calculations import longitudinal_g_from_speed, speed_to_engine_rpm
 from .interpolation import interpolate_keyframes
 from .models import Keyframe, ProjectSettings, create_parameter_from_name
 
@@ -21,8 +21,25 @@ def sample_project(project: ProjectSettings) -> dict[str, list[float]]:
         raw_values_by_name[parameter.name] = values
         sampled[parameter.name] = [parameter.apply_precision(value) for value in values]
 
-    longitudinal_g = project.get_parameter("longitudinal_g")
     speed_values = raw_values_by_name.get("speed_kmh")
+    gear_values = raw_values_by_name.get("gear")
+    rpm = project.get_parameter("rpm")
+    if project.auto_rpm and rpm and speed_values is not None and gear_values is not None:
+        settings = project.vehicle_settings
+        sampled["rpm"] = [
+            rpm.apply_precision(
+                speed_to_engine_rpm(
+                    speed,
+                    int(round(gear)),
+                    settings.gear_ratios,
+                    settings.final_ratio,
+                    settings.wheel_radius_m,
+                )
+            )
+            for speed, gear in zip(speed_values, gear_values, strict=True)
+        ]
+
+    longitudinal_g = project.get_parameter("longitudinal_g")
     if project.auto_longitudinal_g and longitudinal_g and speed_values is not None:
         sampled["longitudinal_g"] = [
             longitudinal_g.apply_precision(value)
