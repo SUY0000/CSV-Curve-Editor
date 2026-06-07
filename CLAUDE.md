@@ -57,7 +57,7 @@ PYTHONPATH=src python -m compileall src
   - `sample_project(apply_export_jitter=True)` 插值所有参数并应用参数精度，导出时对开启抖动的普通参数叠加 jitter，再在自动模式下覆盖 `rpm` 和 `longitudinal_g` 的派生值；自动派生参数自身在自动模式下不应用抖动；源参数默认不影响派生，只有开启 `jitter.affects_derived`/“参与派生”时才用抖动后的源值参与 `rpm`/`longitudinal_g` 计算。`gear` 自身采样为前值保持的整数阶梯，换挡点位于目标挡位关键帧；自动 RPM 由 `speed_kmh`、`gear` 原始插值值、gear ratios、final ratio、wheel radius 单向计算，因此关键帧之间的浮点挡位可让转速回落渐变；自动纵向 G 默认使用 `speed_kmh` 的原始插值值计算，避免先按 0.1km/h 精度量化后再求导造成阶梯抖动。
   - `project_to_rows()` 生成每帧一行的导出数据。
   - `import_csv()` 会把已有 CSV 每行作为关键帧导入；当前没有曲线拟合或稀疏化步骤。
-- `src/csv_curve_editor/curve_editor.py` 封装 pyqtgraph 曲线交互：双击添加关键帧、拖动关键帧、选中关键帧。左侧“多选显示”默认关闭时仅显示当前参数；开启后可勾选多个参数叠加显示，多参数叠加时按各自 Y 范围归一化。编辑器调用 `sample_project(..., apply_export_jitter=False)` 保持主曲线不被导出抖动影响；开启抖动时用虚线显示导出预览。Y 轴范围写回不要使用 `pyqtgraph.sigRangeChanged`，该信号会被启动初始化和程序化 `setYRange()` 触发；当前只在用户鼠标释放拖动画布或滚轮缩放后读取 ViewBox 范围并同步到 `Y Min / Y Max`。
+- `src/csv_curve_editor/curve_editor.py` 封装 pyqtgraph 曲线交互：双击添加关键帧、拖动关键帧、选中关键帧。左侧“多选显示”默认关闭时仅显示当前参数；开启后可勾选多个参数叠加显示，多参数叠加时按各自 Y 范围归一化。编辑器调用 `sample_project(..., apply_export_jitter=False)` 保持主曲线不被导出抖动影响；导出预览虚线应反映 `sample_project(..., apply_export_jitter=True)`，包括源参数勾选“参与派生”后影响只读派生参数（如 `longitudinal_g`）的结果。Y 轴范围写回不要使用 `pyqtgraph.sigRangeChanged`，该信号会被启动初始化和程序化 `setYRange()` 触发；当前只在用户鼠标释放拖动画布或滚轮缩放后读取 ViewBox 范围并同步到 `Y Min / Y Max`。
 - `src/csv_curve_editor/vehicle_settings.py` 是车辆传动设置对话框，点 OK 后更新 `ProjectSettings.vehicle_settings`；弹窗支持应用、保存、删除车辆预设。
 - `src/csv_curve_editor/vehicle_presets.py` 负责本机车辆预设 JSON 读写，路径为 `~/.csv_curve_editor_vehicle_presets.json`；预设只保存 `VehicleSettings`，不保存曲线参数或关键帧。
 

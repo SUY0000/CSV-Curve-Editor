@@ -177,15 +177,16 @@ class CurveEditor(QWidget):
                 name=label,
             )
             self.plot_items.append(item)
-            if parameter is active and parameter.jitter.enabled and not read_only:
-                preview_values = jittered_values_for_preview(values, parameter)
-                preview_item = self.plot.plot(
-                    x_values,
-                    self._values_to_display(parameter, preview_values),
-                    pen=pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine),
-                    name=f"{parameter.name} jitter preview",
-                )
-                self.plot_items.append(preview_item)
+            if parameter is active:
+                preview_values = self._export_preview_values(parameter, values)
+                if preview_values is not None:
+                    preview_item = self.plot.plot(
+                        x_values,
+                        self._values_to_display(parameter, preview_values),
+                        pen=pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine),
+                        name=f"{parameter.name} export preview",
+                    )
+                    self.plot_items.append(preview_item)
 
         active.ensure_endpoints(frame_count)
         self.points_item.setData(
@@ -246,6 +247,14 @@ class CurveEditor(QWidget):
         self.refresh()
         self.keyframe_selected.emit(self.selected_index)
         self.curve_changed.emit(self.parameter.name)
+
+    def _export_preview_values(self, parameter: CurveParameter, values: list[float]) -> list[float] | None:
+        if not self.project:
+            return None
+        if not self.project.is_derived(parameter.name):
+            return jittered_values_for_preview(values, parameter) if parameter.jitter.enabled else None
+        export_values = sample_project(self.project, apply_export_jitter=True).get(parameter.name)
+        return export_values if export_values != values else None
 
     def _values_to_display(self, parameter: CurveParameter, values: list[float]) -> list[float]:
         if not self.multi_overlay:
