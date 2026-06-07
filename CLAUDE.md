@@ -4,15 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 常用命令
 
-本项目当前没有 `pyproject.toml` 或安装包配置，运行源码和测试时需要设置 `PYTHONPATH=src`。
+本项目使用 Conda 管理开发环境；当前没有 `pyproject.toml` 或安装包配置，运行源码和测试时需要设置 `PYTHONPATH=src`。
 
 ```bash
-# 创建并启用虚拟环境
-python -m venv .venv
-source .venv/bin/activate
+# 创建并启用 Conda 环境
+conda env create -f environment.yml
+conda activate csv-curve-editor
 
-# 安装依赖
-pip install -r requirements.txt
+# 已有环境时同步依赖
+conda env update -f environment.yml --prune
+conda activate csv-curve-editor
 
 # 启动 GUI
 PYTHONPATH=src python -m csv_curve_editor.main
@@ -30,7 +31,7 @@ PYTHONPATH=src pytest tests/test_calculations.py::test_speed_engine_rpm_roundtri
 PYTHONPATH=src python -m compileall src
 ```
 
-当前依赖只有 `PySide6`、`pyqtgraph`、`pytest`；没有配置专门的 lint 或 formatter 命令。
+当前依赖在 `environment.yml` 中维护，主要包括 `PySide6`、`pyqtgraph`、`pytest`；没有配置专门的 lint 或 formatter 命令。
 
 ## 项目定位
 

@@ -15,10 +15,18 @@
 
 ## 安装
 
+本项目使用 Conda 管理开发环境。
+
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+conda env create -f environment.yml
+conda activate csv-curve-editor
+```
+
+如果环境已经存在，使用下面的命令同步依赖：
+
+```bash
+conda env update -f environment.yml --prune
+conda activate csv-curve-editor
 ```
 
 ## 启动
@@ -31,6 +39,18 @@ PYTHONPATH=src python -m csv_curve_editor.main
 
 ```bash
 PYTHONPATH=src pytest
+```
+
+运行单个测试文件：
+
+```bash
+PYTHONPATH=src pytest tests/test_calculations.py
+```
+
+运行单个测试用例：
+
+```bash
+PYTHONPATH=src pytest tests/test_calculations.py::test_speed_engine_rpm_roundtrip
 ```
 
 ## 使用建议
