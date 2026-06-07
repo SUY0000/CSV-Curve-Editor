@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 
-from csv_curve_editor.csv_io import export_csv, project_to_rows
+from csv_curve_editor.csv_io import export_csv, project_to_rows, sample_project
 from csv_curve_editor.models import Keyframe, ProjectSettings
 
 
@@ -60,3 +60,15 @@ def test_integer_precision_parameters_export_as_ints() -> None:
     assert isinstance(rows[0]["gear"], int)
     assert rows[0]["rpm"] == 1235
     assert rows[-1]["gear"] == 3
+
+
+def test_auto_longitudinal_g_uses_unrounded_speed_values() -> None:
+    project = ProjectSettings.create_default(fps=1, duration_seconds=3.0)
+    speed = project.get_parameter("speed_kmh")
+    assert speed
+    speed.replace_keyframes([Keyframe(0, 0.0), Keyframe(2, 0.1)], project.frame_count)
+
+    sampled = sample_project(project)
+
+    assert sampled["speed_kmh"] == [0.0, 0.1, 0.1]
+    assert sampled["longitudinal_g"] == [0.001, 0.001, 0.001]

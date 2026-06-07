@@ -46,3 +46,9 @@ def test_longitudinal_g_matches_acceleration() -> None:
     values = longitudinal_g_from_speed([0.0, 36.0], 1)
 
     assert values == pytest.approx([10.0 / 9.80665, 10.0 / 9.80665])
+
+
+def test_longitudinal_g_uses_center_difference_for_middle_frames() -> None:
+    values = longitudinal_g_from_speed([0.0, 0.0, 36.0], 1)
+
+    assert values == pytest.approx([0.0, 5.0 / 9.80665, 10.0 / 9.80665])

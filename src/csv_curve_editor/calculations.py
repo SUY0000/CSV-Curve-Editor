@@ -60,8 +60,12 @@ def longitudinal_g_from_speed(speed_kmh_values: Sequence[float], fps: int) -> li
     dt = 1.0 / fps
     speed_mps = [value / 3.6 for value in speed_kmh_values]
     g_values = [0.0] * len(speed_mps)
-    for index in range(1, len(speed_mps)):
-        acceleration = (speed_mps[index] - speed_mps[index - 1]) / dt
+    for index in range(len(speed_mps)):
+        if index == 0:
+            acceleration = (speed_mps[1] - speed_mps[0]) / dt
+        elif index == len(speed_mps) - 1:
+            acceleration = (speed_mps[index] - speed_mps[index - 1]) / dt
+        else:
+            acceleration = (speed_mps[index + 1] - speed_mps[index - 1]) / (2.0 * dt)
         g_values[index] = acceleration / GRAVITY
-    g_values[0] = g_values[1]
     return g_values

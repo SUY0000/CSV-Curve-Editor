@@ -14,15 +14,18 @@ BASE_COLUMNS = ["frame", "time_seconds"]
 def sample_project(project: ProjectSettings) -> dict[str, list[float]]:
     project.ensure_parameter_endpoints()
     sampled = {}
+    raw_values_by_name = {}
     for parameter in project.parameters:
         values = interpolate_keyframes(parameter.keyframes, project.frame_count)
+        raw_values_by_name[parameter.name] = values
         sampled[parameter.name] = [parameter.apply_precision(value) for value in values]
 
     longitudinal_g = project.get_parameter("longitudinal_g")
-    if project.auto_longitudinal_g and longitudinal_g and "speed_kmh" in sampled:
+    speed_values = raw_values_by_name.get("speed_kmh")
+    if project.auto_longitudinal_g and longitudinal_g and speed_values is not None:
         sampled["longitudinal_g"] = [
             longitudinal_g.apply_precision(value)
-            for value in longitudinal_g_from_speed(sampled["speed_kmh"], project.fps)
+            for value in longitudinal_g_from_speed(speed_values, project.fps)
         ]
 
     return sampled
