@@ -61,18 +61,29 @@ class CurveParameter:
 
     def add_keyframe(self, frame: int, value: float, smooth: float = 0.0) -> int:
         target_frame = int(round(frame))
-        self.keyframes.append(Keyframe(target_frame, self.apply_precision(value), smooth))
+        keyframe = Keyframe(target_frame, self.apply_precision(value), smooth)
+        for index, existing in enumerate(self.keyframes):
+            if existing.frame == target_frame:
+                self.keyframes[index] = keyframe
+                self.keyframes.sort(key=lambda item: item.frame)
+                return next(index for index, item in enumerate(self.keyframes) if item.frame == target_frame)
+        self.keyframes.append(keyframe)
         self.keyframes.sort(key=lambda item: item.frame)
-        return self.keyframes.index(next(item for item in self.keyframes if item.frame == target_frame))
+        return next(index for index, item in enumerate(self.keyframes) if item.frame == target_frame)
 
     def replace_keyframes(self, keyframes: list[Keyframe], frame_count: int, default_value: float = 0.0) -> None:
         self.keyframes = [Keyframe(item.frame, self.apply_precision(item.value), item.smooth) for item in keyframes]
         self.ensure_endpoints(frame_count, default_value)
 
-    def delete_keyframe(self, index: int, frame_count: int) -> None:
-        if 0 <= index < len(self.keyframes):
-            del self.keyframes[index]
+    def delete_keyframe(self, index: int, frame_count: int) -> bool:
+        if not 0 <= index < len(self.keyframes):
+            return False
+        frame = self.keyframes[index].frame
+        if frame in {0, max(0, frame_count - 1)}:
+            return False
+        del self.keyframes[index]
         self.ensure_endpoints(frame_count)
+        return True
 
     def _clamp_and_dedupe(self, frame_count: int) -> None:
         last_frame = max(0, frame_count - 1)

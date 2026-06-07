@@ -48,7 +48,7 @@ PYTHONPATH=src python -m compileall src
   - `VehicleSettings`：gear ratios、final ratio、wheel radius、RPM 范围。
 - `src/csv_curve_editor/interpolation.py` 负责把关键帧采样为逐帧数值。`smooth=0` 为线性；`smooth>0` 用 smoothstep 与线性插值混合。
 - `src/csv_curve_editor/calculations.py` 只放纯计算：速度/轮速/RPM 换算，以及由时速差分计算纵向 G。
-- `src/csv_curve_editor/binding.py` 实现时速/转速双向绑定：最近编辑的 `speed_kmh` 或 `rpm` 作为源，另一方按当前 `gear`、gear ratios、final ratio、wheel radius 重建关键帧；`gear` 变化时按最近源重新同步。
+- `src/csv_curve_editor/binding.py` 实现时速/转速双向绑定和关联关键帧同步：最近编辑的 `speed_kmh` 或 `rpm` 作为源，另一方按当前 `gear`、gear ratios、final ratio、wheel radius 重建关键帧；`speed_kmh`、`rpm`、`gear`、`longitudinal_g` 新增、移动、删除中间关键帧时会同步到其它关联参数，同帧关联关键帧的 `smooth` 也会同步。
 - `src/csv_curve_editor/csv_io.py` 是导入导出和整项目采样层：
   - `sample_project()` 插值所有参数并应用参数精度，再在自动模式下覆盖 `longitudinal_g` 的派生值。
   - `project_to_rows()` 生成每帧一行的导出数据。
@@ -59,10 +59,11 @@ PYTHONPATH=src python -m compileall src
 ## 关键数据流
 
 1. 用户在 `MainWindow` 修改帧率、时长或参数关键帧。
-2. `ProjectSettings.ensure_parameter_endpoints()` 保证每个参数有首尾关键帧，避免采样边界为空。
-3. 若时速/转速绑定开启，`binding.sync_speed_rpm()` 根据最近编辑源同步另一方；`speed_kmh`、`rpm`、`gear` 变化都会触发同步。
-4. `CurveEditor.refresh()` 显示当前活动参数和勾选叠加参数；多参数叠加时只改变显示比例，不改变真实 CSV 数值。
-5. 导出 CSV 时，`export_csv()` → `project_to_rows()` → `sample_project()`，因此导出的数值会应用参数精度，`longitudinal_g` 会反映自动派生开关状态。
+2. `ProjectSettings.ensure_parameter_endpoints()` 保证每个参数有首尾关键帧，且头尾关键帧不可删除。
+3. `binding.align_linked_keyframes()` / `move_linked_keyframes()` / `delete_linked_keyframes()` 让 `speed_kmh`、`rpm`、`gear`、`longitudinal_g` 的中间关键帧同帧新增、移动、删除，并同步同帧 `smooth`。
+4. 若时速/转速绑定开启，`binding.sync_speed_rpm()` 根据最近编辑源同步另一方；`speed_kmh`、`rpm`、`gear` 变化都会触发同步。
+5. `CurveEditor.refresh()` 显示当前活动参数和勾选叠加参数；多参数叠加时只改变显示比例，不改变真实 CSV 数值。
+6. 导出 CSV 时，`export_csv()` → `project_to_rows()` → `sample_project()`，因此导出的数值会应用参数精度，`longitudinal_g` 会反映自动派生开关状态。
 
 ## 测试结构
 

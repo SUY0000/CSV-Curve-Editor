@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from csv_curve_editor.binding import sync_speed_rpm
+from csv_curve_editor.binding import align_linked_keyframes, delete_linked_keyframes, move_linked_keyframes, sync_linked_smooth, sync_speed_rpm
 from csv_curve_editor.calculations import engine_rpm_to_speed_kmh, speed_to_engine_rpm
 from csv_curve_editor.models import Keyframe, ProjectSettings
 
@@ -48,6 +48,82 @@ def test_gear_keyframes_are_included_when_syncing_rpm() -> None:
 
     assert [keyframe.frame for keyframe in rpm.keyframes] == [0, 12, 24]
     assert rpm.keyframes[0].value > rpm.keyframes[1].value
+
+
+def test_aligned_linked_parameters_add_missing_same_frame_keyframes() -> None:
+    project = ProjectSettings.create_default(fps=25, duration_seconds=1.0)
+    speed = project.get_parameter("speed_kmh")
+    rpm = project.get_parameter("rpm")
+    gear = project.get_parameter("gear")
+    longitudinal_g = project.get_parameter("longitudinal_g")
+    assert speed and rpm and gear and longitudinal_g
+    speed.add_keyframe(12, 80.0)
+
+    align_linked_keyframes(project)
+
+    for parameter in [speed, rpm, gear, longitudinal_g]:
+        assert 12 in {keyframe.frame for keyframe in parameter.keyframes}
+
+
+def test_delete_linked_keyframes_removes_same_frame_from_linked_parameters() -> None:
+    project = ProjectSettings.create_default(fps=25, duration_seconds=1.0)
+    for name in ["speed_kmh", "rpm", "gear", "longitudinal_g"]:
+        parameter = project.get_parameter(name)
+        assert parameter
+        parameter.add_keyframe(12, 1.0)
+
+    assert delete_linked_keyframes(project, 12)
+
+    for name in ["speed_kmh", "rpm", "gear", "longitudinal_g"]:
+        parameter = project.get_parameter(name)
+        assert parameter
+        assert 12 not in {keyframe.frame for keyframe in parameter.keyframes}
+
+
+def test_move_linked_keyframes_moves_same_frame_without_leaving_old_frame() -> None:
+    project = ProjectSettings.create_default(fps=25, duration_seconds=1.0)
+    for name in ["speed_kmh", "rpm", "gear", "longitudinal_g"]:
+        parameter = project.get_parameter(name)
+        assert parameter
+        parameter.add_keyframe(12, 10.0, 0.25)
+
+    move_linked_keyframes(project, "speed_kmh", 12, 14, 80.0, 0.75)
+
+    for name in ["speed_kmh", "rpm", "gear", "longitudinal_g"]:
+        parameter = project.get_parameter(name)
+        assert parameter
+        frames = {keyframe.frame for keyframe in parameter.keyframes}
+        assert 12 not in frames
+        assert 14 in frames
+        keyframe = next(keyframe for keyframe in parameter.keyframes if keyframe.frame == 14)
+        assert keyframe.smooth == pytest.approx(0.75)
+
+
+def test_sync_linked_smooth_updates_same_frame_smooth() -> None:
+    project = ProjectSettings.create_default(fps=25, duration_seconds=1.0)
+    for name in ["speed_kmh", "rpm", "gear", "longitudinal_g"]:
+        parameter = project.get_parameter(name)
+        assert parameter
+        parameter.add_keyframe(12, 10.0, 0.1)
+
+    sync_linked_smooth(project, 12, 0.6)
+
+    for name in ["speed_kmh", "rpm", "gear", "longitudinal_g"]:
+        parameter = project.get_parameter(name)
+        assert parameter
+        keyframe = next(keyframe for keyframe in parameter.keyframes if keyframe.frame == 12)
+        assert keyframe.smooth == pytest.approx(0.6)
+
+
+def test_endpoint_keyframes_cannot_be_deleted() -> None:
+    project = ProjectSettings.create_default(fps=25, duration_seconds=1.0)
+    speed = project.get_parameter("speed_kmh")
+    assert speed
+
+    assert not speed.delete_keyframe(0, project.frame_count)
+    assert not delete_linked_keyframes(project, 0)
+
+    assert {keyframe.frame for keyframe in speed.keyframes} == {0, project.frame_count - 1}
 
 
 def test_disabled_link_does_not_sync() -> None:

@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .binding import sync_after_parameter_edit, sync_speed_rpm
+from .binding import delete_linked_keyframes, move_linked_keyframes, sync_after_parameter_edit, sync_linked_smooth, sync_speed_rpm
 from .csv_io import export_csv, import_csv
 from .curve_editor import CurveEditor
 from .models import CurveParameter, Keyframe, ProjectSettings, SUPPORTED_FPS
@@ -339,10 +339,14 @@ class MainWindow(QMainWindow):
             self.frame_spin.setValue(keyframe.frame)
             self.value_spin.setValue(keyframe.value)
             self.smooth_spin.setValue(keyframe.smooth)
+        can_delete = False
+        if enabled and parameter:
+            frame = parameter.keyframes[index].frame
+            can_delete = frame not in {0, self.project.frame_count - 1}
         self.frame_spin.setEnabled(enabled)
         self.value_spin.setEnabled(enabled)
         self.smooth_spin.setEnabled(enabled)
-        self.delete_keyframe_button.setEnabled(enabled and len(parameter.keyframes) > 2 if parameter else False)
+        self.delete_keyframe_button.setEnabled(can_delete)
         self.updating_fields = False
 
     def update_selected_keyframe(self) -> None:
@@ -352,21 +356,30 @@ class MainWindow(QMainWindow):
         index = self.selected_keyframe_index
         if not parameter or self.project.is_derived(parameter.name) or not (0 <= index < len(parameter.keyframes)):
             return
-        parameter.keyframes[index] = Keyframe(
-            self.frame_spin.value(),
-            parameter.apply_precision(self.value_spin.value()),
-            self.smooth_spin.value(),
-        )
-        parameter.ensure_endpoints(self.project.frame_count)
-        sync_after_parameter_edit(self.project, parameter.name)
+        old_frame = parameter.keyframes[index].frame
+        new_frame = self.frame_spin.value()
+        value = parameter.apply_precision(self.value_spin.value())
+        smooth = self.smooth_spin.value()
+        if parameter.name in {"speed_kmh", "rpm", "gear", "longitudinal_g"}:
+            move_linked_keyframes(self.project, parameter.name, old_frame, new_frame, value, smooth)
+            sync_linked_smooth(self.project, new_frame, smooth)
+        else:
+            parameter.keyframes[index] = Keyframe(new_frame, value, smooth)
+            parameter.ensure_endpoints(self.project.frame_count)
+            sync_after_parameter_edit(self.project, parameter.name)
         self.refresh_current_curve()
 
     def delete_selected_keyframe(self) -> None:
         parameter = self.current_parameter()
         if not parameter or self.project.is_derived(parameter.name):
             return
-        parameter.delete_keyframe(self.selected_keyframe_index, self.project.frame_count)
-        sync_after_parameter_edit(self.project, parameter.name)
+        if not 0 <= self.selected_keyframe_index < len(parameter.keyframes):
+            return
+        frame = parameter.keyframes[self.selected_keyframe_index].frame
+        if parameter.name in {"speed_kmh", "rpm", "gear", "longitudinal_g"}:
+            delete_linked_keyframes(self.project, frame)
+        else:
+            parameter.delete_keyframe(self.selected_keyframe_index, self.project.frame_count)
         self.refresh_current_curve()
         self.load_keyframe_fields(min(self.selected_keyframe_index, len(parameter.keyframes) - 1))
 
