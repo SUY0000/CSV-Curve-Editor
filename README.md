@@ -5,7 +5,7 @@
 ## 功能
 
 - 支持 24、25、30、50、60、120fps。
-- 根据帧率和时长生成每帧一行的 CSV。
+- 根据帧率和总帧数生成每帧一行的 CSV。
 - 默认参数：`speed_kmh`、`rpm`、`gear`、`longitudinal_g`、`lateral_g`。
 - 支持新增自定义参数。
 - 可设置 gear ratio、final ratio、wheel radius，实现时速和转速双向绑定。
@@ -57,7 +57,7 @@ PYTHONPATH=src pytest tests/test_calculations.py::test_speed_engine_rpm_roundtri
 
 ## 使用建议
 
-1. 先选择帧率和时长。
+1. 先选择帧率和总帧数。
 2. 保持“时速/转速绑定”开启时，编辑 `speed_kmh` 会同步 `rpm`，编辑 `rpm` 会反向同步 `speed_kmh`。
 3. 在 `speed_kmh`、`rpm`、`gear`、`longitudinal_g` 任一参数上新增或删除中间关键帧时，其它关联参数会同步新增或删除同帧关键帧。
 4. 编辑 `gear` 曲线，并在“车辆设置”里输入 gear ratios、final ratio、wheel radius。

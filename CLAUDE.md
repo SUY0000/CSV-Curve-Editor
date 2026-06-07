@@ -35,7 +35,7 @@ PYTHONPATH=src python -m compileall src
 
 ## 项目定位
 
-这是一个影视车拍后期用的桌面 CSV 曲线编辑器，用于生成每帧一行的 UI 特效数据。默认支持 `speed_kmh`、`rpm`、`gear`、`longitudinal_g`、`lateral_g`，并允许新增自定义参数。CSV 基础列为 `frame` 和 `time_seconds`。时速和转速可双向绑定；`rpm`、`gear` 等参数按各自精度编辑和导出。
+这是一个影视车拍后期用的桌面 CSV 曲线编辑器，用于生成每帧一行的 UI 特效数据。默认支持 `speed_kmh`、`rpm`、`gear`、`longitudinal_g`、`lateral_g`，并允许新增自定义参数。CSV 基础列为 `frame` 和影视时间码 `timecode`（`HH:MM:SS:FF`）。时速和转速可双向绑定；`rpm`、`gear` 等参数按各自精度编辑和导出。
 
 ## 架构概览
 

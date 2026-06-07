@@ -8,7 +8,8 @@ from .calculations import longitudinal_g_from_speed
 from .interpolation import interpolate_keyframes
 from .models import Keyframe, ProjectSettings, create_parameter_from_name
 
-BASE_COLUMNS = ["frame", "time_seconds"]
+BASE_COLUMNS = ["frame", "timecode"]
+LEGACY_BASE_COLUMNS = ["frame", "time_seconds"]
 
 
 def sample_project(project: ProjectSettings) -> dict[str, list[float]]:
@@ -31,14 +32,13 @@ def sample_project(project: ProjectSettings) -> dict[str, list[float]]:
     return sampled
 
 
-def project_to_rows(project: ProjectSettings) -> list[dict[str, float | int]]:
+def project_to_rows(project: ProjectSettings) -> list[dict[str, float | int | str]]:
     sampled = sample_project(project)
-    parameter_names = [parameter.name for parameter in project.parameters]
-    rows: list[dict[str, float | int]] = []
+    rows: list[dict[str, float | int | str]] = []
     for frame in range(project.frame_count):
-        row: dict[str, float | int] = {
+        row: dict[str, float | int | str] = {
             "frame": frame,
-            "time_seconds": frame / project.fps,
+            "timecode": frame_to_timecode(frame, project.fps),
         }
         for parameter in project.parameters:
             value = sampled.get(parameter.name, [0.0] * project.frame_count)[frame]
@@ -65,14 +65,15 @@ def _import_csv_file(file: TextIO, fps: int | None = None) -> ProjectSettings:
     reader = csv.DictReader(file)
     rows = list(reader)
     if not rows:
-        return ProjectSettings.create_default(fps=fps or 25, duration_seconds=1.0)
+        return ProjectSettings.create_default(fps=fps or 25, total_frames=1)
 
     inferred_fps = fps or _infer_fps(rows) or 25
     frame_numbers = [int(float(row.get("frame", index))) for index, row in enumerate(rows)]
-    duration_seconds = max(1.0 / inferred_fps, (max(frame_numbers) + 1) / inferred_fps)
-    project = ProjectSettings(fps=inferred_fps, duration_seconds=duration_seconds)
+    total_frames = max(1, max(frame_numbers) + 1)
+    project = ProjectSettings(fps=inferred_fps, total_frames=total_frames)
 
-    columns = [name for name in (reader.fieldnames or []) if name not in BASE_COLUMNS]
+    base_columns = set(BASE_COLUMNS) | set(LEGACY_BASE_COLUMNS)
+    columns = [name for name in (reader.fieldnames or []) if name not in base_columns]
     for column in columns:
         parameter = create_parameter_from_name(column, _guess_unit(column))
         parameter.keyframes = [
@@ -83,7 +84,7 @@ def _import_csv_file(file: TextIO, fps: int | None = None) -> ProjectSettings:
         project.parameters.append(parameter)
 
     existing = {parameter.name for parameter in project.parameters}
-    defaults = ProjectSettings.create_default(project.fps, project.duration_seconds)
+    defaults = ProjectSettings.create_default(project.fps, total_frames=project.frame_count)
     for parameter in defaults.parameters:
         if parameter.name not in existing:
             project.parameters.append(parameter)
@@ -91,18 +92,30 @@ def _import_csv_file(file: TextIO, fps: int | None = None) -> ProjectSettings:
 
 
 def _infer_fps(rows: list[dict[str, str]]) -> int | None:
-    if len(rows) < 2 or "time_seconds" not in rows[0]:
+    if len(rows) < 2:
         return None
-    try:
-        first = float(rows[0]["time_seconds"])
-        second = float(rows[1]["time_seconds"])
-    except (KeyError, TypeError, ValueError):
-        return None
-    delta = second - first
-    if delta <= 0:
-        return None
-    fps = int(round(1.0 / delta))
-    return fps if fps in (24, 25, 30, 50, 60, 120) else None
+    if "time_seconds" in rows[0]:
+        try:
+            first = float(rows[0]["time_seconds"])
+            second = float(rows[1]["time_seconds"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        delta = second - first
+        if delta <= 0:
+            return None
+        fps = int(round(1.0 / delta))
+        return fps if fps in (24, 25, 30, 50, 60, 120) else None
+    return None
+
+
+def frame_to_timecode(frame: int, fps: int) -> str:
+    if fps <= 0:
+        raise ValueError("fps 必须大于 0")
+    frame = max(0, int(frame))
+    hours, remainder = divmod(frame, fps * 60 * 60)
+    minutes, remainder = divmod(remainder, fps * 60)
+    seconds, frames = divmod(remainder, fps)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}:{frames:02d}"
 
 
 def _guess_unit(name: str) -> str:

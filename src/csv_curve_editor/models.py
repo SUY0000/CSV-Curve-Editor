@@ -106,7 +106,7 @@ class VehicleSettings:
 @dataclass
 class ProjectSettings:
     fps: int = 25
-    duration_seconds: float = 10.0
+    total_frames: int = 250
     parameters: list[CurveParameter] = field(default_factory=list)
     vehicle_settings: VehicleSettings = field(default_factory=VehicleSettings)
     speed_rpm_link_enabled: bool = True
@@ -115,11 +115,22 @@ class ProjectSettings:
 
     @property
     def frame_count(self) -> int:
-        return max(1, int(round(self.fps * self.duration_seconds)))
+        return max(1, int(round(self.total_frames)))
+
+    @property
+    def duration_seconds(self) -> float:
+        return self.frame_count / self.fps
 
     @classmethod
-    def create_default(cls, fps: int = 25, duration_seconds: float = 10.0) -> ProjectSettings:
-        project = cls(fps=fps, duration_seconds=duration_seconds)
+    def create_default(
+        cls,
+        fps: int = 25,
+        total_frames: int | None = None,
+        duration_seconds: float | None = None,
+    ) -> ProjectSettings:
+        if total_frames is None:
+            total_frames = int(round(fps * duration_seconds)) if duration_seconds is not None else 250
+        project = cls(fps=fps, total_frames=total_frames)
         for spec in DEFAULT_PARAMETER_SPECS:
             name, unit, value, decimals, step, minimum, maximum, display_min, display_max = spec
             parameter = CurveParameter(
@@ -142,11 +153,16 @@ class ProjectSettings:
         self.fps = fps
         self.ensure_parameter_endpoints()
 
+    def set_total_frames(self, total_frames: int) -> None:
+        if total_frames <= 0:
+            raise ValueError("总帧数必须大于 0")
+        self.total_frames = int(round(total_frames))
+        self.ensure_parameter_endpoints()
+
     def set_duration(self, duration_seconds: float) -> None:
         if duration_seconds <= 0:
             raise ValueError("时长必须大于 0")
-        self.duration_seconds = float(duration_seconds)
-        self.ensure_parameter_endpoints()
+        self.set_total_frames(int(round(self.fps * duration_seconds)))
 
     def ensure_parameter_endpoints(self) -> None:
         defaults = {name: value for name, _unit, value, *_rest in DEFAULT_PARAMETER_SPECS}

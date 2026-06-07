@@ -60,12 +60,10 @@ class MainWindow(QMainWindow):
         self.fps_combo = QComboBox()
         for fps in SUPPORTED_FPS:
             self.fps_combo.addItem(f"{fps} fps", fps)
-        self.duration_spin = QDoubleSpinBox()
-        self.duration_spin.setRange(0.04, 60 * 60)
-        self.duration_spin.setDecimals(2)
-        self.duration_spin.setSuffix(" s")
-        self.duration_spin.setValue(self.project.duration_seconds)
-        self.duration_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.PlusMinus)
+        self.total_frames_spin = QSpinBox()
+        self.total_frames_spin.setRange(1, 1_000_000)
+        self.total_frames_spin.setValue(self.project.frame_count)
+        self.total_frames_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.PlusMinus)
 
         self.speed_rpm_link_check = QCheckBox("时速/转速绑定")
         self.auto_g_check = QCheckBox("纵向 G 自动计算")
@@ -78,8 +76,8 @@ class MainWindow(QMainWindow):
         toolbar.addSeparator()
         toolbar.addWidget(QLabel("帧率 "))
         toolbar.addWidget(self.fps_combo)
-        toolbar.addWidget(QLabel(" 时长 "))
-        toolbar.addWidget(self.duration_spin)
+        toolbar.addWidget(QLabel(" 总帧数 "))
+        toolbar.addWidget(self.total_frames_spin)
         toolbar.addSeparator()
         toolbar.addWidget(vehicle_button)
         toolbar.addWidget(self.speed_rpm_link_check)
@@ -90,7 +88,7 @@ class MainWindow(QMainWindow):
         export_button.clicked.connect(self.export_csv)
         vehicle_button.clicked.connect(self.edit_vehicle_settings)
         self.fps_combo.currentIndexChanged.connect(self.update_fps)
-        self.duration_spin.valueChanged.connect(self.update_duration)
+        self.total_frames_spin.valueChanged.connect(self.update_total_frames)
         self.speed_rpm_link_check.toggled.connect(self.update_auto_flags)
         self.auto_g_check.toggled.connect(self.update_auto_flags)
 
@@ -174,7 +172,7 @@ class MainWindow(QMainWindow):
         self.project.ensure_parameter_endpoints()
         self.updating_fields = True
         self.fps_combo.setCurrentIndex(self.fps_combo.findData(self.project.fps))
-        self.duration_spin.setValue(self.project.duration_seconds)
+        self.total_frames_spin.setValue(self.project.frame_count)
         self.speed_rpm_link_check.setChecked(self.project.speed_rpm_link_enabled)
         self.auto_g_check.setChecked(self.project.auto_longitudinal_g)
         self.frame_spin.setRange(0, self.project.frame_count - 1)
@@ -250,7 +248,7 @@ class MainWindow(QMainWindow):
     def new_project(self) -> None:
         self.project = ProjectSettings.create_default(
             fps=self.fps_combo.currentData(),
-            duration_seconds=self.duration_spin.value(),
+            total_frames=self.total_frames_spin.value(),
         )
         sync_speed_rpm(self.project, "speed_kmh")
         self.refresh_all()
@@ -286,10 +284,10 @@ class MainWindow(QMainWindow):
         sync_speed_rpm(self.project, self.project.speed_rpm_link_source)
         self.refresh_all()
 
-    def update_duration(self) -> None:
+    def update_total_frames(self) -> None:
         if self.updating_fields:
             return
-        self.project.set_duration(self.duration_spin.value())
+        self.project.set_total_frames(self.total_frames_spin.value())
         sync_speed_rpm(self.project, self.project.speed_rpm_link_source)
         self.refresh_all()
 
@@ -429,5 +427,5 @@ class MainWindow(QMainWindow):
 
     def update_status(self) -> None:
         self.statusBar().showMessage(
-            f"{self.project.fps}fps / {self.project.duration_seconds:.2f}s / {self.project.frame_count} frames"
+            f"{self.project.fps}fps / {self.project.frame_count} frames / {self.project.duration_seconds:.2f}s"
         )

@@ -2,21 +2,21 @@ from __future__ import annotations
 
 import csv
 
-from csv_curve_editor.csv_io import export_csv, project_to_rows, sample_project
+from csv_curve_editor.csv_io import export_csv, frame_to_timecode, project_to_rows, sample_project
 from csv_curve_editor.models import Keyframe, ProjectSettings
 
 
-def test_project_to_rows_matches_fps_and_duration() -> None:
-    project = ProjectSettings.create_default(fps=25, duration_seconds=10.0)
+def test_project_to_rows_matches_total_frames() -> None:
+    project = ProjectSettings.create_default(fps=25, total_frames=123)
     rows = project_to_rows(project)
 
-    assert len(rows) == 250
+    assert len(rows) == 123
     assert rows[0]["frame"] == 0
-    assert rows[-1]["frame"] == 249
+    assert rows[-1]["frame"] == 122
 
 
 def test_export_csv_has_default_columns(tmp_path) -> None:
-    project = ProjectSettings.create_default(fps=60, duration_seconds=1.0)
+    project = ProjectSettings.create_default(fps=60, total_frames=60)
     path = tmp_path / "curve.csv"
 
     export_csv(project, path)
@@ -28,17 +28,19 @@ def test_export_csv_has_default_columns(tmp_path) -> None:
     assert len(rows) == 60
     assert reader.fieldnames == [
         "frame",
-        "time_seconds",
+        "timecode",
         "speed_kmh",
         "rpm",
         "gear",
         "longitudinal_g",
         "lateral_g",
     ]
+    assert rows[0]["timecode"] == "00:00:00:00"
+    assert rows[-1]["timecode"] == "00:00:00:59"
 
 
 def test_custom_parameter_is_exported() -> None:
-    project = ProjectSettings.create_default(fps=24, duration_seconds=1.0)
+    project = ProjectSettings.create_default(fps=24, total_frames=24)
     project.add_parameter("boost", "bar", 1.5)
     rows = project_to_rows(project)
 
@@ -46,8 +48,15 @@ def test_custom_parameter_is_exported() -> None:
     assert rows[0]["boost"] == 1.5
 
 
+def test_frame_to_timecode_uses_film_style_frame_count() -> None:
+    assert frame_to_timecode(0, 25) == "00:00:00:00"
+    assert frame_to_timecode(24, 25) == "00:00:00:24"
+    assert frame_to_timecode(25, 25) == "00:00:01:00"
+    assert frame_to_timecode(25 * 60 * 60 + 1, 25) == "01:00:00:01"
+
+
 def test_integer_precision_parameters_export_as_ints() -> None:
-    project = ProjectSettings.create_default(fps=24, duration_seconds=1.0)
+    project = ProjectSettings.create_default(fps=24, total_frames=24)
     rpm = project.get_parameter("rpm")
     gear = project.get_parameter("gear")
     assert rpm and gear
@@ -63,7 +72,7 @@ def test_integer_precision_parameters_export_as_ints() -> None:
 
 
 def test_auto_longitudinal_g_uses_unrounded_speed_values() -> None:
-    project = ProjectSettings.create_default(fps=1, duration_seconds=3.0)
+    project = ProjectSettings.create_default(fps=1, total_frames=3)
     speed = project.get_parameter("speed_kmh")
     assert speed
     speed.replace_keyframes([Keyframe(0, 0.0), Keyframe(2, 0.1)], project.frame_count)
