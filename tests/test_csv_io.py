@@ -38,16 +38,19 @@ def test_export_csv_has_default_columns(tmp_path) -> None:
     assert reader.fieldnames == [
         "frame",
         "timecode",
+        "t",
         "speed_kmh",
         "rpm",
         "gear",
         "longitudinal_g",
         "lateral_g",
-        "throttle_pct",
-        "brake_pct",
+        "throttle",
+        "brake",
         "oil_temp_c",
     ]
     assert rows[0]["timecode"] == "00:00:00:00"
+    assert rows[0]["t"] == "0.0"
+    assert rows[1]["t"] == "0.016667"
     assert rows[-1]["timecode"] == "00:00:00:59"
 
 
@@ -58,6 +61,21 @@ def test_custom_parameter_is_exported() -> None:
 
     assert len(rows) == 24
     assert rows[0]["boost"] == 1.5
+
+
+def test_default_throttle_and_brake_use_target_ratio_format() -> None:
+    project = ProjectSettings.create_default()
+    throttle = project.get_parameter("throttle")
+    brake = project.get_parameter("brake")
+
+    assert throttle
+    assert brake
+    assert project.get_parameter("throttle_pct") is None
+    assert project.get_parameter("brake_pct") is None
+    assert throttle.minimum == 0.0
+    assert throttle.maximum == 1.0
+    assert brake.minimum == 0.0
+    assert brake.maximum == 1.0
 
 
 def test_frame_to_timecode_uses_film_style_frame_count() -> None:
@@ -98,20 +116,20 @@ def test_auto_longitudinal_g_uses_unrounded_speed_values() -> None:
 
 def test_sample_project_applies_export_jitter_to_regular_parameters() -> None:
     project = ProjectSettings.create_default(fps=24, total_frames=8)
-    throttle = project.get_parameter("throttle_pct")
+    throttle = project.get_parameter("throttle")
     assert throttle
-    throttle.replace_keyframes([Keyframe(0, 50.0), Keyframe(7, 50.0)], project.frame_count)
+    throttle.replace_keyframes([Keyframe(0, 0.5), Keyframe(7, 0.5)], project.frame_count)
     throttle.jitter.enabled = True
-    throttle.jitter.amplitude = 5.0
+    throttle.jitter.amplitude = 0.05
     throttle.jitter.period_frames = 4
     throttle.jitter.seed = 7
 
-    jittered = sample_project(project)["throttle_pct"]
-    original = sample_project(project, apply_export_jitter=False)["throttle_pct"]
+    jittered = sample_project(project)["throttle"]
+    original = sample_project(project, apply_export_jitter=False)["throttle"]
 
-    assert original == [50.0] * 8
+    assert original == [0.5] * 8
     assert jittered != original
-    assert jittered == sample_project(project)["throttle_pct"]
+    assert jittered == sample_project(project)["throttle"]
 
 
 def test_sample_project_does_not_apply_jitter_to_auto_derived_parameter() -> None:

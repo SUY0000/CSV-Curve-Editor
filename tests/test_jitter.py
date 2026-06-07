@@ -61,11 +61,11 @@ def test_apply_jitter_is_smooth_between_frames() -> None:
 
 
 def test_apply_jitter_respects_parameter_limits() -> None:
-    parameter = CurveParameter("throttle_pct", decimals=1, minimum=0.0, maximum=100.0)
+    parameter = CurveParameter("throttle", decimals=3, minimum=0.0, maximum=1.0)
     parameter.jitter.enabled = True
-    parameter.jitter.amplitude = 50.0
-    values = [0.0, 100.0]
+    parameter.jitter.amplitude = 0.5
+    values = [0.0, 1.0]
 
     jittered = apply_jitter(values, parameter)
 
-    assert all(0.0 <= value <= 100.0 for value in jittered)
+    assert all(0.0 <= value <= 1.0 for value in jittered)

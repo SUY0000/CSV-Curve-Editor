@@ -9,7 +9,7 @@ from .interpolation import interpolate_keyframes
 from .jitter import apply_jitter
 from .models import CurveParameter, Keyframe, ProjectSettings, create_parameter_from_name
 
-BASE_COLUMNS = ["frame", "timecode"]
+BASE_COLUMNS = ["frame", "timecode", "t"]
 LEGACY_BASE_COLUMNS = ["frame", "time_seconds"]
 
 
@@ -80,6 +80,7 @@ def project_to_rows(project: ProjectSettings) -> list[dict[str, float | int | st
         row: dict[str, float | int | str] = {
             "frame": frame,
             "timecode": frame_to_timecode(frame, project.fps),
+            "t": round(frame / project.fps, 6),
         }
         for parameter in project.parameters:
             value = sampled.get(parameter.name, [0.0] * project.frame_count)[frame]
@@ -164,6 +165,8 @@ def _guess_unit(name: str) -> str:
         "speed_kmh": "km/h",
         "rpm": "rpm",
         "gear": "gear",
+        "throttle": "",
+        "brake": "",
         "longitudinal_g": "g",
         "lateral_g": "g",
     }.get(name, "")
