@@ -35,7 +35,7 @@ PYTHONPATH=src python -m compileall src
 
 ## 项目定位
 
-这是一个影视车拍后期用的桌面 CSV 曲线编辑器，用于生成每帧一行的 UI 特效数据。默认支持 `speed_kmh`、`rpm`、`gear`、`longitudinal_g`、`lateral_g`，并允许新增自定义参数。CSV 基础列为 `frame` 和影视时间码 `timecode`（`HH:MM:SS:FF`）。`rpm` 可由 `speed_kmh` 和 `gear` 单向自动派生；`rpm`、`gear` 等参数按各自精度编辑和导出。
+这是一个影视车拍后期用的桌面 CSV 曲线编辑器，用于生成每帧一行的 UI 特效数据。默认支持 `speed_kmh`、`rpm`、`gear`、`longitudinal_g`、`lateral_g`、`throttle_pct`、`brake_pct`、`oil_temp_c`，并允许新增自定义参数。CSV 基础列为 `frame` 和影视时间码 `timecode`（`HH:MM:SS:FF`）。`rpm` 可由 `speed_kmh` 和 `gear` 单向自动派生；`rpm`、`gear` 等参数按各自精度编辑和导出。
 
 ## 架构概览
 
@@ -46,14 +46,15 @@ PYTHONPATH=src python -m compileall src
   - `CurveParameter`：一个 CSV 参数列及其关键帧、数值精度、显示范围。
   - `Keyframe`：`frame`、`value`、`smooth`。
   - `VehicleSettings`：gear ratios、final ratio、wheel radius、RPM 范围。
-- `src/csv_curve_editor/interpolation.py` 负责把关键帧采样为逐帧数值。`smooth=0` 为线性；`smooth>0` 在线性插值和基于相邻关键帧切线的三次 Hermite/PCHIP 风格插值之间混合，以减少关键帧处锐角；局部峰值/谷值会把切线压到 0，避免明显过冲。
+- `src/csv_curve_editor/interpolation.py` 负责把关键帧采样为逐帧数值。`smooth=0` 为线性；`smooth>0` 在线性插值和基于相邻关键帧切线的三次 Hermite/PCHIP 风格插值之间混合，以减少关键帧处锐角；局部峰值/谷值会把切线压到 0，避免明显过冲。`Keyframe.smooth` 和新打关键帧默认都是 `1.0`，CSV 导入未显式 smooth 时也使用默认平滑。
 - `src/csv_curve_editor/calculations.py` 只放纯计算：速度/轮速/RPM 换算，以及由时速差分计算纵向 G；自动 RPM 计算允许传入浮点挡位，并在相邻 gear ratio 间插值；纵向 G 的中间帧使用中心差分，头尾帧使用前向/后向差分。
 - `src/csv_curve_editor/csv_io.py` 是导入导出和整项目采样层：
   - `sample_project()` 插值所有参数并应用参数精度，再在自动模式下覆盖 `rpm` 和 `longitudinal_g` 的派生值；`gear` 自身采样为前值保持的整数阶梯，换挡点位于目标挡位关键帧；自动 RPM 由 `speed_kmh`、`gear` 原始插值值、gear ratios、final ratio、wheel radius 单向计算，因此关键帧之间的浮点挡位可让转速回落渐变；自动纵向 G 使用 `speed_kmh` 的原始插值值计算，避免先按 0.1km/h 精度量化后再求导造成阶梯抖动。
   - `project_to_rows()` 生成每帧一行的导出数据。
   - `import_csv()` 会把已有 CSV 每行作为关键帧导入；当前没有曲线拟合或稀疏化步骤。
-- `src/csv_curve_editor/curve_editor.py` 封装 pyqtgraph 曲线交互：双击添加关键帧、拖动关键帧、选中关键帧。支持一个活动编辑参数和多个勾选叠加显示参数；多参数叠加时按各自 Y 范围归一化。Y 轴范围写回不要使用 `pyqtgraph.sigRangeChanged`，该信号会被启动初始化和程序化 `setYRange()` 触发；当前只在用户鼠标释放拖动画布或滚轮缩放后读取 ViewBox 范围并同步到 `Y Min / Y Max`。
-- `src/csv_curve_editor/vehicle_settings.py` 是车辆传动设置对话框，直接更新 `ProjectSettings.vehicle_settings` 内的数据。
+- `src/csv_curve_editor/curve_editor.py` 封装 pyqtgraph 曲线交互：双击添加关键帧、拖动关键帧、选中关键帧。左侧“多选显示”默认关闭时仅显示当前参数；开启后可勾选多个参数叠加显示，多参数叠加时按各自 Y 范围归一化。Y 轴范围写回不要使用 `pyqtgraph.sigRangeChanged`，该信号会被启动初始化和程序化 `setYRange()` 触发；当前只在用户鼠标释放拖动画布或滚轮缩放后读取 ViewBox 范围并同步到 `Y Min / Y Max`。
+- `src/csv_curve_editor/vehicle_settings.py` 是车辆传动设置对话框，点 OK 后更新 `ProjectSettings.vehicle_settings`；弹窗支持应用、保存、删除车辆预设。
+- `src/csv_curve_editor/vehicle_presets.py` 负责本机车辆预设 JSON 读写，路径为 `~/.csv_curve_editor_vehicle_presets.json`；预设只保存 `VehicleSettings`，不保存曲线参数或关键帧。
 
 ## 关键数据流
 
@@ -68,5 +69,6 @@ PYTHONPATH=src python -m compileall src
 - `tests/test_rpm_auto_sync.py` 覆盖 RPM 单向自动派生。
 - `tests/test_interpolation.py` 覆盖线性和平滑插值。
 - `tests/test_csv_io.py` 覆盖帧数、默认列、自定义参数导出和整数精度导出。
+- `tests/test_vehicle_presets.py` 覆盖车辆预设保存、覆盖、删除和损坏 JSON 容错。
 
-修改参数精度、派生曲线、CSV 列结构或插值规则时，优先更新对应测试文件。
+修改参数精度、派生曲线、CSV 列结构、插值规则或车辆预设读写时，优先更新对应测试文件。
