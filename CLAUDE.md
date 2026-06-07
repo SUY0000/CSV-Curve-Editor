@@ -46,7 +46,7 @@ PYTHONPATH=src python -m compileall src
   - `CurveParameter`：一个 CSV 参数列及其关键帧、数值精度、显示范围。
   - `Keyframe`：`frame`、`value`、`smooth`。
   - `VehicleSettings`：gear ratios、final ratio、wheel radius、RPM 范围。
-- `src/csv_curve_editor/interpolation.py` 负责把关键帧采样为逐帧数值。`smooth=0` 为线性；`smooth>0` 用 smoothstep 与线性插值混合。
+- `src/csv_curve_editor/interpolation.py` 负责把关键帧采样为逐帧数值。`smooth=0` 为线性；`smooth>0` 在线性插值和基于相邻关键帧切线的三次 Hermite/PCHIP 风格插值之间混合，以减少关键帧处锐角；局部峰值/谷值会把切线压到 0，避免明显过冲。
 - `src/csv_curve_editor/calculations.py` 只放纯计算：速度/轮速/RPM 换算，以及由时速差分计算纵向 G；纵向 G 的中间帧使用中心差分，头尾帧使用前向/后向差分。
 - `src/csv_curve_editor/binding.py` 实现时速/转速双向绑定和关联关键帧同步：最近编辑的 `speed_kmh` 或 `rpm` 作为源，另一方按当前 `gear`、gear ratios、final ratio、wheel radius 重建关键帧；`speed_kmh`、`rpm`、`gear`、`longitudinal_g` 新增、移动、删除中间关键帧时会同步到其它关联参数，同帧关联关键帧的 `smooth` 也会同步。
 - `src/csv_curve_editor/csv_io.py` 是导入导出和整项目采样层：
