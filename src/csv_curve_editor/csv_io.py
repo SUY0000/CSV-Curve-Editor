@@ -109,7 +109,7 @@ def _import_csv_file(file: TextIO, fps: int | None = None) -> ProjectSettings:
     for column in columns:
         parameter = create_parameter_from_name(column, _guess_unit(column))
         parameter.keyframes = [
-            Keyframe(frame, parameter.apply_precision(_to_float(row.get(column, "0"))), 0.0)
+            Keyframe(frame, parameter.apply_precision(_to_float(row.get(column, "0"))))
             for frame, row in zip(frame_numbers, rows, strict=True)
         ]
         parameter.ensure_endpoints(project.frame_count)

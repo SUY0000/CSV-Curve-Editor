@@ -3,11 +3,11 @@ from __future__ import annotations
 import pytest
 
 from csv_curve_editor.interpolation import interpolate_keyframes
-from csv_curve_editor.models import Keyframe
+from csv_curve_editor.models import CurveParameter, Keyframe
 
 
 def test_linear_interpolation() -> None:
-    values = interpolate_keyframes([Keyframe(0, 0.0), Keyframe(4, 40.0)], 5)
+    values = interpolate_keyframes([Keyframe(0, 0.0, 0.0), Keyframe(4, 40.0, 0.0)], 5)
 
     assert values == pytest.approx([0.0, 10.0, 20.0, 30.0, 40.0])
 
@@ -35,3 +35,11 @@ def test_smooth_interpolation_uses_neighboring_keyframes_for_curve_shape() -> No
 
 def test_empty_keyframes_default_to_zero() -> None:
     assert interpolate_keyframes([], 3) == [0.0, 0.0, 0.0]
+
+
+def test_added_keyframe_defaults_to_full_smooth() -> None:
+    parameter = CurveParameter("speed_kmh")
+
+    parameter.add_keyframe(2, 50.0)
+
+    assert parameter.keyframes[0].smooth == 1.0

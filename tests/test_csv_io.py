@@ -43,6 +43,9 @@ def test_export_csv_has_default_columns(tmp_path) -> None:
         "gear",
         "longitudinal_g",
         "lateral_g",
+        "throttle_pct",
+        "brake_pct",
+        "oil_temp_c",
     ]
     assert rows[0]["timecode"] == "00:00:00:00"
     assert rows[-1]["timecode"] == "00:00:00:59"

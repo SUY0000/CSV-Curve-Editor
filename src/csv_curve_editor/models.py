@@ -9,6 +9,9 @@ DEFAULT_PARAMETER_SPECS = (
     ("gear", "gear", 1.0, 0, 1.0, 1.0, None, 1.0, 6.0),
     ("longitudinal_g", "g", 0.0, 3, 0.001, None, None, -2.0, 2.0),
     ("lateral_g", "g", 0.0, 3, 0.001, None, None, -2.0, 2.0),
+    ("throttle_pct", "%", 0.0, 1, 0.1, 0.0, 100.0, 0.0, 100.0),
+    ("brake_pct", "%", 0.0, 1, 0.1, 0.0, 100.0, 0.0, 100.0),
+    ("oil_temp_c", "°C", 0.0, 1, 0.1, None, None, 0.0, 150.0),
 )
 
 
@@ -16,7 +19,7 @@ DEFAULT_PARAMETER_SPECS = (
 class Keyframe:
     frame: int
     value: float
-    smooth: float = 0.0
+    smooth: float = 1.0
 
     def __post_init__(self) -> None:
         self.frame = int(round(self.frame))
@@ -59,7 +62,7 @@ class CurveParameter:
             self.keyframes.append(Keyframe(last_frame, self.keyframes[-1].value, self.keyframes[-1].smooth))
         self._clamp_and_dedupe(frame_count)
 
-    def add_keyframe(self, frame: int, value: float, smooth: float = 0.0) -> int:
+    def add_keyframe(self, frame: int, value: float, smooth: float = 1.0) -> int:
         target_frame = int(round(frame))
         keyframe = Keyframe(target_frame, self.apply_precision(value), smooth)
         for index, existing in enumerate(self.keyframes):
